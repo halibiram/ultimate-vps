@@ -17,14 +17,15 @@ Bu script, Debian-tabanlı Linux sunucularında kapsamlı ve yüksek performansl
   - Gelişmiş `sysctl` ağ ve kernel ayarları
   - Artırılmış dosya tanımlayıcı ve process limitleri
 - **Gelişmiş Güvenlik ve Gizlilik:**
+  - **Let's Encrypt Entegrasyonu:** Alan adınız için otomatik olarak geçerli SSL sertifikaları alır ve yeniler.
   - **Multi-SNI Domain Fronting:** Trafiği popüler web siteleri (Google, Amazon, vb.) arkasına gizler.
-  - **WhatsApp Bypass:** Trafiği `web.whatsapp.com` gibi göstererek DPI (Derin Paket İncelemesi) sistemlerini atlatır.
   - **XTLS-Reality:** Gelişmiş sansür sistemlerine karşı sunucu parmak izini ortadan kaldırır.
+  - **gRPC Desteği:** Xray için ek bir transport protokolü sunarak gizliliği artırır.
   - **AdGuard Home:** Reklam ve izleyici engelleme için DNS-over-HTTPS sunucusu.
-- **Otomatik Kurulum ve Raporlama:**
-  - UFW Firewall ve QoS (Quality of Service) kurallarını otomatik yapılandırır.
-  - Kurulum sonunda tüm bağlantı bilgilerini içeren detaylı bir rapor oluşturur.
-  - Performans takibi için `vpn-monitor` komutunu sunar.
+- **Otomatik Kurulum ve Yönetim:**
+  - **Kullanıcı Yönetimi:** `vpn-manager` komutu ile kolayca Xray kullanıcısı ekleyin, silin ve listeleyin.
+  - **Otomatik Raporlama:** Kurulum sonunda tüm bağlantı bilgilerini içeren detaylı bir rapor oluşturur.
+  - **Performans Takibi:** `vpn-monitor` komutu ile sunucu durumunu izleyin.
 
 ## 🛠️ Kullanım
 
@@ -41,7 +42,9 @@ chmod +x setup.sh
 sudo ./setup.sh
 ```
 
-Script çalıştırıldığında, size bir dizi "Ultimate Mode" seçeneği sunacaktır.
+Script, kurulumun başında size SSL sertifikası için bir alan adı kullanmak isteyip istemediğinizi soracaktır. Eğer bir alan adınız varsa ve bunu sunucunun IP adresine yönlendirdiyseniz, `y` seçeneği ile devam ederek Let's Encrypt üzerinden geçerli bir SSL sertifikası alabilirsiniz.
+
+Daha sonra, size bir dizi "Ultimate Mode" seçeneği sunulacaktır.
 
 ## ⚡ Ultimate Mode Seçenekleri
 
@@ -51,23 +54,33 @@ Script çalıştırıldığında, size bir dizi "Ultimate Mode" seçeneği sunac
 4.  **🛠️ Custom Ultimate:** Hangi bileşenlerin kurulacağını tek tek seçmenize olanak tanır.
 5.  **🚀 MAXIMUM OVERDRIVE:** **Tavsiye edilen moddur.** Tüm özellikleri, XanMod kernel yükseltmesini ve bütün optimizasyonları içerir.
 
-## 📄 Kurulum Sonrası
+## 📄 Kurulum Sonrası Bilgiler
 
 Kurulum tamamlandıktan sonra, tüm önemli bilgiler ve istemci yapılandırmaları sunucunuzda ilgili dosyalara kaydedilir.
 
 - **Ana Rapor:** Tüm servislerin özetini, IP adresini ve temel bilgileri içeren rapor `/root/ultimate-vpn-report.txt` dosyasında bulunur.
-- **İstemci Yapılandırmaları:**
-  - **WireGuard:** `/etc/wireguard/client-ultimate.conf` (QR kodu: `/etc/wireguard/client-ultimate-qr.png`)
-  - **Xray:** `/etc/xray-ultimate-configs.txt`
-  - **Hysteria2:** `/etc/hysteria/client-ultimate.yaml`
-  - **TUIC:** `/etc/tuic/client.json`
-  - **Sing-Box:** `/etc/sing-box/client-configs.txt`
-  - **SSH-TLS:** Örnek yapılandırmalar ve helper script'ler `/etc/ssh-tls-configs/` ve `/usr/local/bin/` altında bulunur.
-- **AdGuard Home Arayüzü:** `https://<SUNUCU_IP>:3000`
+- **İstemci Yapılandırmaları:** Her servisin istemci yapılandırma dosyası, rapor dosyasında ve ilgili servislerin kurulum dizinlerinde belirtilmiştir (örn: `/etc/xray/`, `/etc/hysteria/` vb.).
 
-## 📊 Performans İzleme
+## ⚙️ Yönetim ve İzleme
 
-Sunucunuzun anlık performansını ve VPN servislerinin durumunu kontrol etmek için aşağıdaki komutu kullanabilirsiniz:
+Kurulum sonrası sunucunuzu yönetmek ve izlemek için aşağıdaki komutları kullanabilirsiniz.
+
+### Kullanıcı Yönetimi
+
+Xray (VLESS) kullanıcılarını kolayca yönetmek için `vpn-manager` komutunu kullanın:
+
+```bash
+sudo vpn-manager
+```
+
+Bu komut size aşağıdaki seçenekleri sunan interaktif bir menü açacaktır:
+- Yeni kullanıcı ekleme
+- Mevcut bir kullanıcıyı silme
+- Tüm kullanıcıları listeleme
+
+### Performans İzleme
+
+Sunucunuzun anlık performansını ve VPN servislerinin durumunu kontrol etmek için:
 
 ```bash
 vpn-monitor
