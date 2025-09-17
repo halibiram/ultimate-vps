@@ -34,7 +34,7 @@ Bu script, Debian-tabanlı Linux sunucularında kapsamlı ve yüksek performansl
 Script'i kullanmak için sunucunuza indirin, çalıştırılabilir yapın ve `sudo` yetkileriyle çalıştırın.
 ```bash
 # Script'i indirin (URL'yi kendi reponuzla değiştirin)
-# wget https://example.com/setup.sh
+# wget https://github.com/halibiram/ultimate-vps/setup.sh
 # Çalıştırma izni verin
 chmod +x setup.sh
 # Root yetkileriyle çalıştırın
