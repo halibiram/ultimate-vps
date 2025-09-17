@@ -110,6 +110,18 @@ else
     info "Kendinden imzalı (self-signed) sertifika kullanılacak."
 fi
 
+# --- UI Panel Seçeneği ---
+INSTALL_UI_PANEL="n"
+echo
+ultimate "Web Yönetim Paneli (UI)"
+read -p "Xray'i yönetmek için 3x-ui web panelini kurmak ister misiniz? (y/n): " -r UI_CHOICE
+if [[ "$UI_CHOICE" =~ ^[Yy]$ ]]; then
+    INSTALL_UI_PANEL="y"
+    info "3x-ui web paneli kurulacak. Manuel Xray yapılandırması ve vpn-manager atlanacak."
+else
+    info "Manuel Xray yapılandırması ve vpn-manager script'i kurulacak."
+fi
+
 # Sertifika kurulumu
 setup_certificates() {
     ultimate "Sertifika altyapısı hazırlanıyor..."
@@ -337,8 +349,17 @@ EOF
 install_xray_ultimate() {
     ultimate "Xray Ultimate Multi-SNI Reality kuruluyor..."
     
+    # Sadece xray çekirdeğini kur
     bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install
     
+    # Eğer UI panel kurulacaksa, config oluşturmayı atla
+    if [ "$INSTALL_UI_PANEL" = "y" ]; then
+        info "UI Panel kurulumu seçildiği için manuel Xray yapılandırması atlanıyor."
+        # Xray servisini durdur, panel yönetecek
+        systemctl stop xray
+        return
+    fi
+
     # SNI domain array oluştur
     IFS=',' read -ra SNI_ARRAY <<< "$SNI_DOMAINS"
     
@@ -1340,6 +1361,7 @@ main_ultimate_install() {
         2) # Stealth Master
             info "Stealth Master modu seçildi: Xray + TUIC + SSH-TLS + DNS"
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_tuic_ultimate
             install_ssh_tls_ultimate
             setup_ultimate_dns
@@ -1349,6 +1371,7 @@ main_ultimate_install() {
             optimize_system_ultimate
             install_wireguard_ultimate
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_hysteria2_ultimate
             install_ssh_tls_ultimate
             ;;
@@ -1366,7 +1389,10 @@ main_ultimate_install() {
             [[ $INSTALL_XANMOD =~ ^[Yy]$ ]] && install_xanmod_kernel
             optimize_system_ultimate
             [[ $INSTALL_WG =~ ^[Yy]$ ]] && install_wireguard_ultimate
-            [[ $INSTALL_XRAY =~ ^[Yy]$ ]] && install_xray_ultimate
+            if [[ $INSTALL_XRAY =~ ^[Yy]$ ]]; then
+                install_xray_ultimate
+                if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
+            fi
             [[ $INSTALL_HY2 =~ ^[Yy]$ ]] && install_hysteria2_ultimate
             [[ $INSTALL_TUIC =~ ^[Yy]$ ]] && install_tuic_ultimate
             [[ $INSTALL_SINGBOX =~ ^[Yy]$ ]] && install_singbox_ultimate
@@ -1379,6 +1405,7 @@ main_ultimate_install() {
             optimize_system_ultimate
             install_wireguard_ultimate
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_hysteria2_ultimate
             install_tuic_ultimate
             install_singbox_ultimate
@@ -1508,6 +1535,22 @@ EOF
     success "Kullanıcı yönetim script'i kuruldu. Komut: vpn-manager"
 }
 
+# 3x-ui Panel Installation
+install_3x_ui_panel() {
+    ultimate "3x-ui Web Yönetim Paneli kuruluyor..."
+
+    # Run the official installer
+    bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+
+    if [ $? -eq 0 ]; then
+        success "3x-ui paneli başarıyla kuruldu."
+        info "Panel bilgilerine ve yapılandırma seçeneklerine erişmek için 'x-ui' komutunu kullanabilirsiniz."
+        warn "Güvenlik için, kurulum sonrası ilk iş olarak varsayılan kullanıcı adı ve şifreyi değiştirin."
+    else
+        error "3x-ui panel kurulumu sırasında bir hata oluştu."
+    fi
+}
+
 # Performance Monitoring Setup
 setup_monitoring() {
     ultimate "Performance Monitoring kuruluyor..."
@@ -1596,15 +1639,24 @@ EOF
 EOF
     fi
     
-    if systemctl is-active --quiet xray; then
+    if [ "$INSTALL_UI_PANEL" = "y" ]; then
         cat >> /root/ultimate-vpn-report.txt << EOF
-✅ Xray Ultimate Multi-SNI Reality + WhatsApp - Port: 443/TCP
-   VLESS Reality: Ultra stealth WhatsApp bypass
+✅ 3x-ui Web Yönetim Paneli
+   Xray yönetimi için web arayüzü kuruldu.
+   Panele erişmek ve varsayılan ayarları görmek için sunucuda 'x-ui' komutunu çalıştırın.
+   Güvenlik için ilk girişte kullanıcı adı ve şifreyi değiştirmeyi unutmayın.
+
+EOF
+    elif systemctl is-active --quiet xray; then
+        cat >> /root/ultimate-vpn-report.txt << EOF
+✅ Xray Ultimate (Manuel Kurulum)
+   VLESS Reality: Port 443/TCP
    VMess WebSocket: Port 8080/TCP
    VLESS-gRPC: Port 8082/TCP
    Trojan WebSocket: Port 8443/TCP
    Shadowsocks 2022: Port 9443/TCP
    Config Details: /etc/xray-ultimate-configs.txt
+   Yönetim Aracı: vpn-manager
    TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
@@ -1762,7 +1814,15 @@ apt install -y curl wget git vim htop tree unzip software-properties-common \
 main_ultimate_install
 setup_ultimate_firewall
 setup_monitoring
-install_vpn_manager
+
+# Manuel kurulumda vpn-manager'ı kur, UI panel seçilmediyse
+if [ "$INSTALL_UI_PANEL" = "n" ]; then
+    # Sadece Xray kurulduysa vpn-manager'ı kur
+    if command -v xray &> /dev/null && [ -f "/usr/local/etc/xray/config.json" ]; then
+        install_vpn_manager
+    fi
+fi
+
 generate_ultimate_report
 
 # Final message

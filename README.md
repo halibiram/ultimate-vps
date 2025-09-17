@@ -28,26 +28,29 @@ Bu script, Debian-tabanlı Linux sunucularında kapsamlı ve yüksek performansl
   - **Otomatik Raporlama:** Kurulum sonunda tüm bağlantı bilgilerini içeren detaylı bir rapor oluşturur.
   - **Performans Takibi:** `vpn-monitor` komutu ile sunucu durumunu izleyin.
 
-## 🛠️ Kullanım
+## 🛠️ Kullanım ve Kurulum Seçenekleri
 
+### 1. Kurulumu Başlatma
 Script'i kullanmak için sunucunuza indirin, çalıştırılabilir yapın ve `sudo` yetkileriyle çalıştırın.
-
 ```bash
 # Script'i indirin (URL'yi kendi reponuzla değiştirin)
 # wget https://example.com/setup.sh
-
 # Çalıştırma izni verin
 chmod +x setup.sh
-
 # Root yetkileriyle çalıştırın
 sudo ./setup.sh
 ```
 
-Script, kurulumun başında size SSL sertifikası için bir alan adı kullanmak isteyip istemediğinizi soracaktır. Eğer bir alan adınız varsa ve bunu sunucunun IP adresine yönlendirdiyseniz, `y` seçeneği ile devam ederek Let's Encrypt üzerinden geçerli bir SSL sertifikası alabilirsiniz.
+### 2. Sertifika Seçimi
+Script, kurulumun başında size SSL sertifikası için bir alan adı kullanmak isteyip istemediğinizi soracaktır. Eğer bir alan adınız varsa ve bunu sunucunun IP adresine yönlendirdiyseniz, `y` seçeneği ile devam ederek **Let's Encrypt** üzerinden geçerli bir SSL sertifikası alabilirsiniz. Aksi takdirde script, tüm servisler için güvenli, kendinden imzalı bir sertifika oluşturacaktır.
 
-Daha sonra, size bir dizi "Ultimate Mode" seçeneği sunulacaktır.
+### 3. Yönetim Yöntemi Seçimi: Manuel mi, Web UI mı?
+Script size Xray'i nasıl yöneteceğinizi soracaktır:
+*   **Manuel Kurulum (Önerilen):** `n` seçeneği ile devam ederseniz, script bu dökümanda anlatılan tüm optimize edilmiş protokolleri (VLESS Reality, gRPC, vb.) kurar. Kurulum sonrası kullanıcı yönetimi için size `vpn-manager` adında bir komut satırı aracı sunulur. Bu seçenek, maksimum performans ve kontrol isteyenler için tavsiye edilir.
+*   **Web UI ile Kurulum:** `y` seçeneği ile devam ederseniz, script **3x-ui Web Panelini** kuracaktır. Bu panel, size kullanıcıları, protokolleri ve ayarları yönetmek için tarayıcı tabanlı, kullanıcı dostu bir arayüz sunar. Bu seçeneği tercih ederseniz, script'in manuel Xray yapılandırması atlanır ve tüm kontrol panele devredilir.
 
-## ⚡ Ultimate Mode Seçenekleri
+### 4. Ultimate Mode Seçimi
+Son olarak, ihtiyacınıza uygun kurulum profilini seçin:
 
 1.  **🏃 Speed Demon:** Maksimum hız odaklıdır. WireGuard, Hysteria2 ve sistem optimizasyonlarını kurar.
 2.  **🥷 Stealth Master:** Maksimum gizlilik ve sansür atlatma odaklıdır. Xray (Reality), TUIC, SSH-TLS ve AdGuard DNS kurar.
