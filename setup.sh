@@ -1,38 +1,4 @@
-# WhatsApp optimized client config
-    cat > /etc/hysteria/client-ultimate.yaml << EOF
-server: $SERVER_IP:36712
-
-auth: $VPN_PASS
-
-tls:
-  sni: web.whatsapp.com
-  insecure: true
-
-bandwidth:
-  up: 500 mbps
-  down: 500 mbps
-
-socks5:
-  listen: 127.0.0.1:1080
-
-http:
-  listen: 127.0.0.1:8080
-
-lazy: false
-
-# WhatsApp traffic routing
-transport:
-  udp:
-    hopInterval: 30s
-
-acl:
-  - name: whatsapp_direct
-    action: direct
-    rule:
-      - domain_suffix:whatsapp.com
-      - domain_suffix:wa.me
-      - domain_suffix:facebook.com
-EOF#!/bin/bash
+#!/bin/bash
 
 # Ultimate VPN Sunucu Kurulum Scripti
 # Maksimum Performans + SNI Bypass + Kernel Optimizasyonu
@@ -122,6 +88,80 @@ SNI_DOMAINS=${SNI_DOMAINS:-"google.com,cloudflare.com,microsoft.com,amazon.com,w
 
 # WhatsApp optimize edilmiş SNI domains
 WHATSAPP_SNIS="web.whatsapp.com,wa.me,whatsapp.com,whatsapp.net,facebook.com,instagram.com,messenger.com"
+
+# --- Sertifika Seçenekleri ---
+USE_LETSENCRYPT="n"
+LETSENCRYPT_DOMAIN=""
+CERT_FILE_PATH=""
+KEY_FILE_PATH=""
+
+echo
+ultimate "SSL Sertifika Yapılandırması"
+read -p "Geçerli bir SSL sertifikası için alan adı kullanmak ister misiniz (Let's Encrypt)? (y/n): " -r USE_LE_CHOICE
+if [[ "$USE_LE_CHOICE" =~ ^[Yy]$ ]]; then
+    USE_LETSENCRYPT="y"
+    read -p "Lütfen alan adınızı girin (örn: vpn.example.com): " LETSENCRYPT_DOMAIN
+    read -p "Let's Encrypt için e-posta adresinizi girin (yenileme bildirimleri için): " LETSENCRYPT_EMAIL
+    if [ -z "$LETSENCRYPT_DOMAIN" ] || [ -z "$LETSENCRYPT_EMAIL" ]; then
+        error "Let's Encrypt için alan adı ve e-posta gereklidir."
+    fi
+    info "Alan adı '$LETSENCRYPT_DOMAIN' Let's Encrypt sertifikası için kullanılacak."
+else
+    info "Kendinden imzalı (self-signed) sertifika kullanılacak."
+fi
+
+# --- UI Panel Seçeneği ---
+INSTALL_UI_PANEL="n"
+echo
+ultimate "Web Yönetim Paneli (UI)"
+read -p "Xray'i yönetmek için 3x-ui web panelini kurmak ister misiniz? (y/n): " -r UI_CHOICE
+if [[ "$UI_CHOICE" =~ ^[Yy]$ ]]; then
+    INSTALL_UI_PANEL="y"
+    info "3x-ui web paneli kurulacak. Manuel Xray yapılandırması ve vpn-manager atlanacak."
+else
+    info "Manuel Xray yapılandırması ve vpn-manager script'i kurulacak."
+fi
+
+# Sertifika kurulumu
+setup_certificates() {
+    ultimate "Sertifika altyapısı hazırlanıyor..."
+    if [ "$USE_LETSENCRYPT" = "y" ]; then
+        info "Let's Encrypt sertifikası alınıyor: $LETSENCRYPT_DOMAIN"
+        # Certbot kur
+        if ! command -v certbot &> /dev/null; then
+            apt install -y certbot python3-certbot-nginx || error "Certbot kurulamadı."
+        fi
+
+        # Port 80'i aç
+        ufw allow 80/tcp
+
+        # Sertifikayı al
+        certbot certonly --standalone -d "$LETSENCRYPT_DOMAIN" --email "$LETSENCRYPT_EMAIL" --agree-tos --no-eff-email --non-interactive
+
+        if [ -f "/etc/letsencrypt/live/$LETSENCRYPT_DOMAIN/fullchain.pem" ]; then
+            CERT_FILE_PATH="/etc/letsencrypt/live/$LETSENCRYPT_DOMAIN/fullchain.pem"
+            KEY_FILE_PATH="/etc/letsencrypt/live/$LETSENCRYPT_DOMAIN/privkey.pem"
+            success "Let's Encrypt sertifikası başarıyla alındı."
+        else
+            error "Let's Encrypt sertifikası alınamadı. Lütfen alan adınızın sunucu IP'sini gösterdiğinden ve port 80'in açık olduğundan emin olun."
+        fi
+    else
+        info "Kendinden imzalı (self-signed) sertifika oluşturuluyor..."
+        mkdir -p /etc/ultimate-vpn/certs
+
+        # CAMOUFLAGE_DOMAIN veya LETSENCRYPT_DOMAIN'i kullan
+        local cert_cn=${CAMOUFLAGE_DOMAIN:-"web.whatsapp.com"}
+
+        openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 \
+            -subj "/C=US/ST=California/O=Google LLC/CN=$cert_cn" \
+            -keyout /etc/ultimate-vpn/certs/private.key \
+            -out /etc/ultimate-vpn/certs/certificate.crt
+
+        CERT_FILE_PATH="/etc/ultimate-vpn/certs/certificate.crt"
+        KEY_FILE_PATH="/etc/ultimate-vpn/certs/private.key"
+        success "Kendinden imzalı sertifika oluşturuldu."
+    fi
+}
 
 # XanMod Kernel kurulumu (Ultimate Performance)
 install_xanmod_kernel() {
@@ -309,8 +349,17 @@ EOF
 install_xray_ultimate() {
     ultimate "Xray Ultimate Multi-SNI Reality kuruluyor..."
     
+    # Sadece xray çekirdeğini kur
     bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install
     
+    # Eğer UI panel kurulacaksa, config oluşturmayı atla
+    if [ "$INSTALL_UI_PANEL" = "y" ]; then
+        info "UI Panel kurulumu seçildiği için manuel Xray yapılandırması atlanıyor."
+        # Xray servisini durdur, panel yönetecek
+        systemctl stop xray
+        return
+    fi
+
     # SNI domain array oluştur
     IFS=',' read -ra SNI_ARRAY <<< "$SNI_DOMAINS"
     
@@ -332,6 +381,9 @@ install_xray_ultimate() {
     SHORT_ID3=$(openssl rand -hex 8)
     
     # Ultimate Multi-Protocol Xray Config with WhatsApp optimization
+    # TLS SNI, LETSENCRYPT_DOMAIN veya CAMOUFLAGE_DOMAIN'e göre ayarlanır
+    local tls_sni=${LETSENCRYPT_DOMAIN:-$CAMOUFLAGE_DOMAIN}
+
     cat > /usr/local/etc/xray/config.json << EOF
 {
   "log": {
@@ -389,21 +441,20 @@ install_xray_ultimate() {
         "wsSettings": {
           "path": "/whatsapp-ws",
           "headers": {
-            "Host": "web.whatsapp.com",
-            "User-Agent": "WhatsApp/2.0 (compatible; MSIE 10.0; Windows NT 6.2; WOW64; Trident/6.0)"
+            "Host": "$tls_sni"
           }
         }
       }
     },
     {
-      "tag": "trojan-ws-whatsapp",
+      "tag": "trojan-ws-tls",
       "port": 8443,
       "protocol": "trojan",
       "settings": {
         "clients": [
           {
             "password": "$VPN_PASS",
-            "email": "trojan-whatsapp@ultimate"
+            "email": "trojan-ws@ultimate"
           }
         ]
       },
@@ -411,30 +462,57 @@ install_xray_ultimate() {
         "network": "ws",
         "security": "tls",
         "wsSettings": {
-          "path": "/whatsapp-trojan",
-          "headers": {
-            "Host": "web.whatsapp.com"
-          }
+          "path": "/trojan-ws"
         },
         "tlsSettings": {
-          "serverName": "web.whatsapp.com",
+          "serverName": "$tls_sni",
           "certificates": [
             {
-              "certificateFile": "/etc/ssl/certs/whatsapp.crt",
-              "keyFile": "/etc/ssl/private/whatsapp.key"
+              "certificateFile": "$CERT_FILE_PATH",
+              "keyFile": "$KEY_FILE_PATH"
             }
           ]
         }
       }
     },
     {
-      "tag": "shadowsocks-whatsapp",
+      "tag": "shadowsocks-2022",
       "port": 9443,
       "protocol": "shadowsocks",
       "settings": {
-        "method": "chacha20-ietf-poly1305",
+        "method": "2022-blake3-aes-256-gcm",
         "password": "$VPN_PASS",
         "network": "tcp,udp"
+      }
+    },
+    {
+      "tag": "vless-grpc-tls",
+      "port": 8082,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "$VLESS_UUID",
+            "email": "vless-grpc@ultimate"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "security": "tls",
+        "grpcSettings": {
+          "serviceName": "vless-grpc"
+        },
+        "tlsSettings": {
+          "serverName": "$tls_sni",
+          "certificates": [
+            {
+              "certificateFile": "$CERT_FILE_PATH",
+              "keyFile": "$KEY_FILE_PATH"
+            }
+          ]
+        }
       }
     }
   ],
@@ -453,7 +531,7 @@ install_xray_ultimate() {
     "rules": [
       {
         "type": "field",
-        "domain": ["whatsapp.com", "whatsapp.net", "wa.me", "facebook.com", "instagram.com"],
+        "domain": ["geosite:whatsapp"],
         "outboundTag": "direct"
       },
       {
@@ -465,20 +543,6 @@ install_xray_ultimate() {
   }
 }
 EOF
-    
-    # WhatsApp optimized SSL certificate
-    mkdir -p /etc/ssl/private
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=CA/L=Menlo Park/O=WhatsApp Inc/CN=web.whatsapp.com" \
-        -keyout /etc/ssl/private/whatsapp.key \
-        -out /etc/ssl/certs/whatsapp.crt \
-        -addext "subjectAltName=DNS:web.whatsapp.com,DNS:wa.me,DNS:whatsapp.com,DNS:whatsapp.net"
-    
-    # Xray için ayrıca genel sertifika
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=State/L=City/O=Organization/CN=$CAMOUFLAGE_DOMAIN" \
-        -keyout /etc/ssl/private/xray.key \
-        -out /etc/ssl/certs/xray.crt
     
     mkdir -p /var/log/xray
     systemctl enable xray
@@ -555,6 +619,18 @@ proxies:
       short-id: $SHORT_ID1
     servername: web.whatsapp.com
     client-fingerprint: chrome
+  - name: "Ultimate-VLESS-gRPC"
+    type: vless
+    server: $SERVER_IP
+    port: 8082
+    uuid: $VLESS_UUID
+    network: grpc
+    tls: true
+    udp: true
+    servername: $tls_sni
+    client-fingerprint: chrome
+    grpc-opts:
+      grpc-service-name: "vless-grpc"
 EOF
     
     success "Xray Ultimate Multi-SNI Reality + WhatsApp Bypass kuruldu"
@@ -570,20 +646,16 @@ install_hysteria2_ultimate() {
     mv hysteria-linux-amd64 /usr/local/bin/hysteria
     
     mkdir -p /etc/hysteria
-    
-    # Self-signed certificate
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=State/L=City/O=$CAMOUFLAGE_DOMAIN/CN=$CAMOUFLAGE_DOMAIN" \
-        -keyout /etc/hysteria/hysteria.key \
-        -out /etc/hysteria/hysteria.crt
+
+    local tls_sni=${LETSENCRYPT_DOMAIN:-$CAMOUFLAGE_DOMAIN}
     
     # Ultimate Hysteria2 config
     cat > /etc/hysteria/config.yaml << EOF
 listen: :36712
 
 tls:
-  cert: /etc/hysteria/hysteria.crt
-  key: /etc/hysteria/hysteria.key
+  cert: $CERT_FILE_PATH
+  key: $KEY_FILE_PATH
 
 auth:
   type: password
@@ -644,14 +716,20 @@ WantedBy=multi-user.target
 EOF
     
     # Client config
+    local tls_sni=${LETSENCRYPT_DOMAIN:-$CAMOUFLAGE_DOMAIN}
+    local insecure_tls_client="true"
+    if [ "$USE_LETSENCRYPT" = "y" ]; then
+        insecure_tls_client="false"
+    fi
+
     cat > /etc/hysteria/client-ultimate.yaml << EOF
 server: $SERVER_IP:36712
 
 auth: $VPN_PASS
 
 tls:
-  sni: $CAMOUFLAGE_DOMAIN
-  insecure: true
+  sni: $tls_sni
+  insecure: $insecure_tls_client
 
 bandwidth:
   up: 500 mbps
@@ -684,14 +762,8 @@ install_tuic_ultimate() {
     
     # TUIC UUID oluştur
     TUIC_UUID=$(cat /proc/sys/kernel/random/uuid)
-    
-    # WhatsApp certificate for TUIC
     mkdir -p /etc/tuic
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=CA/L=Menlo Park/O=WhatsApp Inc/CN=web.whatsapp.com" \
-        -keyout /etc/tuic/whatsapp.key \
-        -out /etc/tuic/whatsapp.crt \
-        -addext "subjectAltName=DNS:web.whatsapp.com,DNS:wa.me,DNS:whatsapp.com"
+    local tls_sni=${LETSENCRYPT_DOMAIN:-"web.whatsapp.com"}
     
     cat > /etc/tuic/config.json << EOF
 {
@@ -699,8 +771,8 @@ install_tuic_ultimate() {
     "users": {
         "$TUIC_UUID": "$VPN_PASS"
     },
-    "certificate": "/etc/tuic/whatsapp.crt",
-    "private_key": "/etc/tuic/whatsapp.key",
+    "certificate": "$CERT_FILE_PATH",
+    "private_key": "$KEY_FILE_PATH",
     "congestion_control": "bbr",
     "alpn": ["h3"],
     "log_level": "info",
@@ -735,12 +807,13 @@ EOF
         "server": "$SERVER_IP:8443",
         "uuid": "$TUIC_UUID",
         "password": "$VPN_PASS",
-        "ip": "$SERVER_IP",
-        "certificates": ["/etc/tuic/whatsapp.crt"],
         "alpn": ["h3"],
-        "sni": "web.whatsapp.com",
+        "sni": "$tls_sni",
+        "udp_relay_mode": "native",
+        "congestion_control": "bbr",
         "zero_rtt_handshake": true,
-        "dual_stack": true
+        "dual_stack": true,
+        "insecure_skip_verify": $([ "$USE_LETSENCRYPT" = "y" ] && echo "false" || echo "true")
     },
     "local": {
         "server": "127.0.0.1:1080"
@@ -763,100 +836,57 @@ install_ssh_tls_ultimate() {
     # Install dependencies
     apt install -y stunnel4 openssh-server dropbear-bin
     
-    # Create SSH-TLS certificates for WhatsApp SNI
     mkdir -p /etc/stunnel
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=CA/L=San Francisco/O=WhatsApp Inc/CN=web.whatsapp.com" \
-        -keyout /etc/stunnel/whatsapp.key \
-        -out /etc/stunnel/whatsapp.crt
-    
-    cat /etc/stunnel/whatsapp.crt /etc/stunnel/whatsapp.key > /etc/stunnel/whatsapp.pem
-    chmod 600 /etc/stunnel/whatsapp.pem
+    local tls_sni=${LETSENCRYPT_DOMAIN:-"web.whatsapp.com"}
+
+    # Create PEM file for stunnel
+    cat "$CERT_FILE_PATH" "$KEY_FILE_PATH" > /etc/stunnel/stunnel.pem
+    chmod 600 /etc/stunnel/stunnel.pem
     
     # SSH-TLS Stunnel config for WhatsApp bypass
     cat > /etc/stunnel/ssh-tls.conf << EOF
-# SSH-TLS Ultimate WhatsApp Configuration
-cert = /etc/stunnel/whatsapp.pem
+# SSH-TLS Ultimate Performance Configuration
+cert = /etc/stunnel/stunnel.pem
 pid = /var/run/stunnel-ssh.pid
-debug = 4
+debug = 3
+sslVersion = all
+options = NO_SSLv2
+options = NO_SSLv3
+options = CIPHER_SERVER_PREFERENCE
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
 
-# WhatsApp Web SNI Masquerading
-[ssh-whatsapp-443]
+[ssh-tls-443]
 accept = 443
-connect = 127.0.0.1:2443
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-TIMEOUTbusy = 60
-TIMEOUTclose = 60
-TIMEOUTconnect = 60
-TIMEOUTidle = 60
-
-[ssh-whatsapp-22443]
-accept = 22443
 connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-
-# Additional WhatsApp ports
-[ssh-whatsapp-8443]
-accept = 8443
-connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-
-[ssh-whatsapp-9443]
-accept = 9443
-connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
+sni = $tls_sni
 EOF
 
-    # Optimize SSH server for WhatsApp traffic patterns
+    # Optimize SSH server for performance
     cat >> /etc/ssh/sshd_config << EOF
 
-# === SSH-TLS ULTIMATE WHATSAPP OPTIMIZATION ===
-# Multiple ports for bypass
+# === SSH-TLS ULTIMATE PERFORMANCE OPTIMIZATION ===
 Port 22
-Port 2443
-Port 2222
-Port 8022
-
-# WhatsApp traffic optimization
 TCPKeepAlive yes
 ClientAliveInterval 30
 ClientAliveCountMax 3
-Compression yes
 UseDNS no
-
-# Performance settings
-MaxAuthTries 6
-MaxSessions 50
-MaxStartups 50:30:100
-
-# Allow tunneling for VPN usage
 AllowTcpForwarding yes
-AllowAgentForwarding yes
 GatewayPorts yes
 PermitTunnel yes
-
-# WhatsApp specific optimizations
-Protocol 2
-PubkeyAuthentication yes
 PasswordAuthentication yes
 PermitRootLogin yes
-X11Forwarding yes
+Compression delayed
+Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 EOF
 
     # Dropbear config for additional bypass
     cat > /etc/default/dropbear << EOF
-# Dropbear SSH server for additional bypass
 NO_START=0
 DROPBEAR_PORT=444
-DROPBEAR_EXTRA_ARGS="-p 8080 -p 9080 -p 10443"
+DROPBEAR_EXTRA_ARGS="-p 8080 -p 9080"
 DROPBEAR_BANNER=""
-DROPBEAR_RSAKEY="/etc/dropbear/dropbear_rsa_host_key"
-DROPBEAR_DSSKEY="/etc/dropbear/dropbear_dss_host_key"
-DROPBEAR_ECDSAKEY="/etc/dropbear/dropbear_ecdsa_host_key"
 DROPBEAR_RECEIVE_WINDOW=65536
 EOF
 
@@ -879,91 +909,7 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    # WhatsApp traffic shaping for SSH-TLS
-    cat > /usr/local/bin/whatsapp-traffic-shape << 'EOF'
-#!/bin/bash
-# WhatsApp traffic shaping for SSH-TLS
-tc qdisc add dev eth0 parent 1:20 handle 20: sfq perturb 10
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 22443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 8443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 9443 0xffff flowid 1:20
-
-# WhatsApp Web specific optimization
-iptables -t mangle -A POSTROUTING -p tcp --sport 443 -j DSCP --set-dscp-class af31
-iptables -t mangle -A POSTROUTING -p tcp --sport 22443 -j DSCP --set-dscp-class af31
-EOF
-    chmod +x /usr/local/bin/whatsapp-traffic-shape
-
-    # Create SSH-TLS client configs
-    mkdir -p /etc/ssh-tls-configs
     
-    # WhatsApp optimized client config
-    cat > /etc/ssh-tls-configs/whatsapp-client.ovpn << EOF
-# SSH-TLS Ultimate WhatsApp Client Config
-client
-dev tun
-proto tcp
-remote $SERVER_IP 443
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-comp-lzo
-verb 3
-cipher AES-256-CBC
-auth SHA256
-key-direction 1
-
-# WhatsApp Web masquerading
-tls-client
-remote-cert-tls server
-http-proxy-option CUSTOM-HEADER Host web.whatsapp.com
-http-proxy-option CUSTOM-HEADER User-Agent Mozilla/5.0
-
-# Optimized for WhatsApp traffic
-sndbuf 393216
-rcvbuf 393216
-push "sndbuf 393216"
-push "rcvbuf 393216"
-push "comp-lzo yes"
-
-<ca>
-$(cat /etc/stunnel/whatsapp.crt)
-</ca>
-EOF
-
-    # SSH tunnel helper script for WhatsApp
-    cat > /usr/local/bin/ssh-whatsapp-tunnel << EOF
-#!/bin/bash
-# SSH-TLS WhatsApp Tunnel Helper
-echo "🚀 SSH-TLS WhatsApp Tunnel başlatılıyor..."
-
-# Create SSH tunnel with WhatsApp SNI
-ssh -o StrictHostKeyChecking=no \\
-    -o ServerAliveInterval=30 \\
-    -o ServerAliveCountMax=3 \\
-    -o TCPKeepAlive=yes \\
-    -D 1080 \\
-    -p 22443 \\
-    -N $VPN_USER@$SERVER_IP \\
-    -i /root/.ssh/whatsapp_key
-
-echo "✅ WhatsApp tunnel aktif - SOCKS5: 127.0.0.1:1080"
-EOF
-    chmod +x /usr/local/bin/ssh-whatsapp-tunnel
-
-    # Create SSH key for WhatsApp tunnel
-    ssh-keygen -t rsa -b 2048 -f /root/.ssh/whatsapp_key -N "" -C "whatsapp-tunnel@$HOSTNAME"
-    
-    # Add key to authorized_keys
-    mkdir -p /home/$VPN_USER/.ssh
-    cat /root/.ssh/whatsapp_key.pub >> /home/$VPN_USER/.ssh/authorized_keys
-    chown -R $VPN_USER:$VPN_USER /home/$VPN_USER/.ssh
-    chmod 700 /home/$VPN_USER/.ssh
-    chmod 600 /home/$VPN_USER/.ssh/authorized_keys
-
     # Start services
     systemctl daemon-reload
     systemctl enable ssh-tls-ultimate
@@ -972,240 +918,38 @@ EOF
     systemctl enable dropbear
     systemctl start dropbear
 
-    success "SSH-TLS Ultimate WhatsApp VPN kuruldu - Ports: 443, 22443, 8443, 9443"
+    success "SSH-TLS Ultimate WhatsApp VPN kuruldu - Port: 443/TCP (Stunnel)"
 }
 
-# SSH-TLS VPN Ultimate (WhatsApp Optimized)
-install_ssh_tls_ultimate() {
-    ultimate "SSH-TLS VPN Ultimate (WhatsApp Optimized) kuruluyor..."
+# Sing-Box Ultimate Multi-Protocol (WhatsApp Optimized)
+install_singbox_ultimate() {
+    ultimate "Sing-Box Ultimate Multi-Protocol + WhatsApp Bypass kuruluyor..."
     
-    # Install dependencies
-    apt install -y stunnel4 openssh-server dropbear-bin
-    
-    # Create SSH-TLS certificates for WhatsApp SNI
-    mkdir -p /etc/stunnel
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=CA/L=San Francisco/O=WhatsApp Inc/CN=web.whatsapp.com" \
-        -keyout /etc/stunnel/whatsapp.key \
-        -out /etc/stunnel/whatsapp.crt
-    
-    cat /etc/stunnel/whatsapp.crt /etc/stunnel/whatsapp.key > /etc/stunnel/whatsapp.pem
-    chmod 600 /etc/stunnel/whatsapp.pem
-    
-    # SSH-TLS Stunnel config for WhatsApp bypass
-    cat > /etc/stunnel/ssh-tls.conf << EOF
-# SSH-TLS Ultimate WhatsApp Configuration
-cert = /etc/stunnel/whatsapp.pem
-pid = /var/run/stunnel-ssh.pid
-debug = 4
-
-# WhatsApp Web SNI Masquerading
-[ssh-whatsapp-443]
-accept = 443
-connect = 127.0.0.1:2443
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-TIMEOUTbusy = 60
-TIMEOUTclose = 60
-TIMEOUTconnect = 60
-TIMEOUTidle = 60
-
-[ssh-whatsapp-22443]
-accept = 22443
-connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-
-# Additional WhatsApp ports
-[ssh-whatsapp-8443]
-accept = 8443
-connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-
-[ssh-whatsapp-9443]
-accept = 9443
-connect = 127.0.0.1:22
-cert = /etc/stunnel/whatsapp.pem
-key = /etc/stunnel/whatsapp.key
-EOF
-
-    # Optimize SSH server for WhatsApp traffic patterns
-    cat >> /etc/ssh/sshd_config << EOF
-
-# === SSH-TLS ULTIMATE WHATSAPP OPTIMIZATION ===
-# Multiple ports for bypass
-Port 22
-Port 2443
-Port 2222
-Port 8022
-
-# WhatsApp traffic optimization
-TCPKeepAlive yes
-ClientAliveInterval 30
-ClientAliveCountMax 3
-Compression yes
-UseDNS no
-
-# Performance settings
-MaxAuthTries 6
-MaxSessions 50
-MaxStartups 50:30:100
-
-# Allow tunneling for VPN usage
-AllowTcpForwarding yes
-AllowAgentForwarding yes
-GatewayPorts yes
-PermitTunnel yes
-
-# WhatsApp specific optimizations
-Protocol 2
-PubkeyAuthentication yes
-PasswordAuthentication yes
-PermitRootLogin yes
-X11Forwarding yes
-EOF
-
-    # Dropbear config for additional bypass
-    cat > /etc/default/dropbear << EOF
-# Dropbear SSH server for additional bypass
-NO_START=0
-DROPBEAR_PORT=444
-DROPBEAR_EXTRA_ARGS="-p 8080 -p 9080 -p 10443"
-DROPBEAR_BANNER=""
-DROPBEAR_RSAKEY="/etc/dropbear/dropbear_rsa_host_key"
-DROPBEAR_DSSKEY="/etc/dropbear/dropbear_dss_host_key"
-DROPBEAR_ECDSAKEY="/etc/dropbear/dropbear_ecdsa_host_key"
-DROPBEAR_RECEIVE_WINDOW=65536
-EOF
-
-    # SSH-TLS systemd service
-    cat > /etc/systemd/system/ssh-tls-ultimate.service << EOF
-[Unit]
-Description=SSH-TLS Ultimate WhatsApp VPN
-After=network.target
-
-[Service]
-Type=forking
-User=root
-ExecStart=/usr/bin/stunnel4 /etc/stunnel/ssh-tls.conf
-ExecReload=/bin/kill -HUP \$MAINPID
-PIDFile=/var/run/stunnel-ssh.pid
-KillMode=process
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # WhatsApp traffic shaping for SSH-TLS
-    cat > /usr/local/bin/whatsapp-traffic-shape << 'EOF'
-#!/bin/bash
-# WhatsApp traffic shaping for SSH-TLS
-tc qdisc add dev eth0 parent 1:20 handle 20: sfq perturb 10
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 22443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 8443 0xffff flowid 1:20
-tc filter add dev eth0 parent 1: protocol ip prio 2 u32 match ip dport 9443 0xffff flowid 1:20
-
-# WhatsApp Web specific optimization
-iptables -t mangle -A POSTROUTING -p tcp --sport 443 -j DSCP --set-dscp-class af31
-iptables -t mangle -A POSTROUTING -p tcp --sport 22443 -j DSCP --set-dscp-class af31
-EOF
-    chmod +x /usr/local/bin/whatsapp-traffic-shape
-
-    # Create SSH-TLS client configs
-    mkdir -p /etc/ssh-tls-configs
-    
-    # WhatsApp optimized client config
-    cat > /etc/ssh-tls-configs/whatsapp-client.ovpn << EOF
-# SSH-TLS Ultimate WhatsApp Client Config
-client
-dev tun
-proto tcp
-remote $SERVER_IP 443
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-comp-lzo
-verb 3
-cipher AES-256-CBC
-auth SHA256
-key-direction 1
-
-# WhatsApp Web masquerading
-tls-client
-remote-cert-tls server
-http-proxy-option CUSTOM-HEADER Host web.whatsapp.com
-http-proxy-option CUSTOM-HEADER User-Agent Mozilla/5.0
-
-# Optimized for WhatsApp traffic
-sndbuf 393216
-rcvbuf 393216
-push "sndbuf 393216"
-push "rcvbuf 393216"
-push "comp-lzo yes"
-
-<ca>
-$(cat /etc/stunnel/whatsapp.crt)
-</ca>
-EOF
-
-    # SSH tunnel helper script for WhatsApp
-    cat > /usr/local/bin/ssh-whatsapp-tunnel << EOF
-#!/bin/bash
-# SSH-TLS WhatsApp Tunnel Helper
-echo "🚀 SSH-TLS WhatsApp Tunnel başlatılıyor..."
-
-# Create SSH tunnel with WhatsApp SNI
-ssh -o StrictHostKeyChecking=no \\
-    -o ServerAliveInterval=30 \\
-    -o ServerAliveCountMax=3 \\
-    -o TCPKeepAlive=yes \\
-    -D 1080 \\
-    -p 22443 \\
-    -N $VPN_USER@$SERVER_IP \\
-    -i /root/.ssh/whatsapp_key
-
-echo "✅ WhatsApp tunnel aktif - SOCKS5: 127.0.0.1:1080"
-EOF
-    chmod +x /usr/local/bin/ssh-whatsapp-tunnel
-
-    # Create SSH key for WhatsApp tunnel
-    ssh-keygen -t rsa -b 2048 -f /root/.ssh/whatsapp_key -N "" -C "whatsapp-tunnel@$HOSTNAME"
-    
-    # Add key to authorized_keys
-    mkdir -p /home/$VPN_USER/.ssh
-    cat /root/.ssh/whatsapp_key.pub >> /home/$VPN_USER/.ssh/authorized_keys
-    chown -R $VPN_USER:$VPN_USER /home/$VPN_USER/.ssh
-    chmod 700 /home/$VPN_USER/.ssh
-    chmod 600 /home/$VPN_USER/.ssh/authorized_keys
-
-    # Start services
-    systemctl daemon-reload
-    systemctl enable ssh-tls-ultimate
-    systemctl start ssh-tls-ultimate
-    systemctl restart ssh
-    systemctl enable dropbear
-    systemctl start dropbear
-
-    success "SSH-TLS Ultimate WhatsApp VPN kuruldu - Ports: 443, 22443, 8443, 9443"
-}
-    ultimate "Sing-Box Ultimate Multi-Protocol kuruluyor..."
-    
+    # Download and install Sing-Box
     cd /tmp
-    wget https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-1.5.4-linux-amd64.tar.gz
-    tar xzf sing-box-*.tar.gz
-    chmod +x sing-box-*/sing-box
-    mv sing-box-*/sing-box /usr/local/bin/
+    LATEST_SINGBOX_URL=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep "browser_download_url" | grep "linux-amd64" | cut -d '"' -f 4)
+    if [ -z "$LATEST_SINGBOX_URL" ]; then
+        error "Sing-Box son sürümü alınamadı. Manuel kontrol edin."
+        LATEST_SINGBOX_URL="https://github.com/SagerNet/sing-box/releases/download/v1.9.0-beta.7/sing-box-1.9.0-beta.7-linux-amd64.tar.gz" # Fallback
+    fi
+    wget -O sing-box.tar.gz "$LATEST_SINGBOX_URL"
+
+    SINGBOX_DIR=$(tar -tzf sing-box.tar.gz | head -1 | cut -f1 -d"/")
+    tar xzf sing-box.tar.gz
     
-    # UUID'ler oluştur
-    SINGBOX_UUID1=$(cat /proc/sys/kernel/random/uuid)
-    SINGBOX_UUID2=$(cat /proc/sys/kernel/random/uuid)
+    mv "$SINGBOX_DIR/sing-box" /usr/local/bin/
+    rm -rf "$SINGBOX_DIR" sing-box.tar.gz
     
     mkdir -p /etc/sing-box
+
+    SINGBOX_VLESS_UUID=$(cat /proc/sys/kernel/random/uuid)
+    REALITY_KEYS=$(xray x25519)
+    PRIVATE_KEY=$(echo "$REALITY_KEYS" | grep "Private key:" | cut -d' ' -f3)
+    PUBLIC_KEY=$(echo "$REALITY_KEYS" | grep "Public key:" | cut -d' ' -f3)
+    SHORT_ID=$(openssl rand -hex 8)
+    local tls_sni=${LETSENCRYPT_DOMAIN:-"web.whatsapp.com"}
+
+    # Create Sing-Box config with WhatsApp optimization
     cat > /etc/sing-box/config.json << EOF
 {
   "log": {
@@ -1215,15 +959,18 @@ EOF
   "inbounds": [
     {
       "type": "vless",
-      "tag": "vless-whatsapp",
+      "tag": "vless-reality-whatsapp",
       "listen": "::",
       "listen_port": 9443,
       "users": [
         {
-          "uuid": "$SINGBOX_UUID1",
+          "uuid": "$SINGBOX_VLESS_UUID",
           "flow": "xtls-rprx-vision"
         }
       ],
+      "transport": {
+        "type": "tcp"
+      },
       "tls": {
         "enabled": true,
         "server_name": "web.whatsapp.com",
@@ -1233,14 +980,14 @@ EOF
             "server": "web.whatsapp.com",
             "server_port": 443
           },
-          "private_key": "$(xray x25519 | grep 'Private key:' | cut -d' ' -f3)",
-          "short_id": ["$(openssl rand -hex 8)"]
+          "private_key": "$PRIVATE_KEY",
+          "short_id": ["$SHORT_ID"]
         }
       }
     },
     {
       "type": "hysteria2",
-      "tag": "hy2-whatsapp", 
+      "tag": "hy2-whatsapp",
       "listen": "::",
       "listen_port": 36713,
       "users": [
@@ -1248,12 +995,12 @@ EOF
           "password": "$VPN_PASS"
         }
       ],
-      "masquerade": "https://web.whatsapp.com",
       "tls": {
         "enabled": true,
+        "server_name": "$tls_sni",
         "alpn": ["h3"],
-        "certificate_path": "/etc/ssl/certs/whatsapp-singbox.crt",
-        "key_path": "/etc/ssl/private/whatsapp-singbox.key"
+        "certificate_path": "$CERT_FILE_PATH",
+        "key_path": "$KEY_FILE_PATH"
       }
     }
   ],
@@ -1266,46 +1013,70 @@ EOF
   "route": {
     "rules": [
       {
-        "domain_suffix": ["whatsapp.com", "whatsapp.net", "wa.me", "facebook.com", "instagram.com"],
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "domain_suffix": ["geosite:whatsapp"],
         "outbound": "direct"
       }
     ]
   }
 }
 EOF
-    
-    # WhatsApp SSL certificate for Sing-Box
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=CA/L=Menlo Park/O=WhatsApp Inc/CN=web.whatsapp.com" \
-        -keyout /etc/ssl/private/whatsapp-singbox.key \
-        -out /etc/ssl/certs/whatsapp-singbox.crt \
-        -addext "subjectAltName=DNS:web.whatsapp.com,DNS:wa.me,DNS:whatsapp.com"
-    
-    # Systemd service
-    cat > /etc/systemd/system/sing-box-ultimate.service << EOF
+
+    # Create systemd service for Sing-Box
+    cat > /etc/systemd/system/sing-box.service << EOF
 [Unit]
-Description=Sing-Box Ultimate Multi-Protocol
+Description=Sing-Box Ultimate Service
 After=network.target nss-lookup.target
 
 [Service]
 User=root
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+WorkingDirectory=/etc/sing-box
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
-ExecReload=/bin/kill -HUP $MAINPID
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
-RestartSec=5s
-LimitNOFILE=1048576
+RestartSec=10
+LimitNOFILE=infinity
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+    # Create client config details
+    cat > /etc/sing-box/client-configs.txt << EOF
+=== SING-BOX ULTIMATE WHATSAPP CONFIGS ===
+
+1. VLESS Reality (for clients like v2rayNG):
+---------------------------------------------
+Address: $SERVER_IP
+Port: 9443
+UUID: $SINGBOX_VLESS_UUID
+Flow: xtls-rprx-vision
+Security: reality
+SNI: web.whatsapp.com
+Fingerprint: chrome
+Public Key: $PUBLIC_KEY
+Short ID: $SHORT_ID
+
+2. Hysteria2 (for clients like NekoBox/Clash Meta):
+---------------------------------------------------
+Server: $SERVER_IP:36713
+Password: $VPN_PASS
+SNI: $tls_sni
+Insecure: $([ "$USE_LETSENCRYPT" = "y" ] && echo "false" || echo "true")
+
+EOF
     
     systemctl daemon-reload
-    systemctl enable sing-box-ultimate
-    systemctl start sing-box-ultimate
+    systemctl enable sing-box
+    systemctl start sing-box
     
-    success "Sing-Box Ultimate + WhatsApp Bypass kuruldu - Ports: 9443/TCP, 36713/UDP"
+    success "Sing-Box Ultimate + WhatsApp Bypass kuruldu - Ports: 9443/TCP (VLESS), 36713/UDP (Hysteria2)"
+    info "Sing-Box client configs saved to /etc/sing-box/client-configs.txt"
 }
 
 # Ultimate Firewall + Traffic Shaping
@@ -1321,10 +1092,16 @@ setup_ultimate_firewall() {
     ufw allow 22/tcp
     ufw allow 2222/tcp
     
+    # Allow port 80 for Let's Encrypt
+    if [ "$USE_LETSENCRYPT" = "y" ]; then
+        ufw allow 80/tcp
+    fi
+
     # VPN Ports (WhatsApp Optimized)
     ufw allow 51820/udp  # WireGuard
     ufw allow 443/tcp    # Xray Reality & SSH-TLS WhatsApp
     ufw allow 8080/tcp   # Xray VMess-WS & Dropbear
+    ufw allow 8082/tcp   # Xray VLESS-gRPC
     ufw allow 8443/tcp   # Xray Trojan-WS & TUIC & SSH-TLS
     ufw allow 36712/udp  # Hysteria2 WhatsApp
     ufw allow 36713/udp  # Sing-Box Hysteria2 WhatsApp
@@ -1477,10 +1254,8 @@ tls:
   port_dnscrypt: 0
   dnscrypt_config_file: ""
   allow_unencrypted_doh: false
-  certificate_chain: ""
-  private_key: ""
-  certificate_path: /etc/ssl/certs/adguard.crt
-  private_key_path: /etc/ssl/private/adguard.key
+  certificate_chain: "$CERT_FILE_PATH"
+  private_key: "$KEY_FILE_PATH"
   strict_sni_check: false
 querylog:
   ignored: []
@@ -1543,10 +1318,7 @@ schema_version: 20
 EOF
     
     # SSL certificate for AdGuard
-    openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 \
-        -subj "/C=US/ST=State/L=City/O=AdGuard/CN=$SERVER_IP" \
-        -keyout /etc/ssl/private/adguard.key \
-        -out /etc/ssl/certs/adguard.crt
+    # AdGuard will use the main certificate
     
     chown adguardhome:adguardhome /var/lib/adguardhome/AdGuardHome.yaml
     
@@ -1578,39 +1350,49 @@ EOF
 
 # Main Installation Logic
 main_ultimate_install() {
+    setup_certificates
     case $ULTIMATE_CHOICE in
         1) # Speed Demon
+            info "Speed Demon modu seçildi: WireGuard + Hysteria2 + Optimizasyonlar"
             optimize_system_ultimate
             install_wireguard_ultimate
             install_hysteria2_ultimate
             ;;
         2) # Stealth Master
+            info "Stealth Master modu seçildi: Xray + TUIC + SSH-TLS + DNS"
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_tuic_ultimate
             install_ssh_tls_ultimate
             setup_ultimate_dns
             ;;
         3) # Hybrid Beast
+            info "Hybrid Beast modu seçildi: Speed + Stealth"
             optimize_system_ultimate
             install_wireguard_ultimate
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_hysteria2_ultimate
             install_ssh_tls_ultimate
             ;;
         4) # Custom Ultimate
-            read -p "XanMod Kernel kur? (y/n): " INSTALL_XANMOD
-            read -p "WireGuard Ultimate kur? (y/n): " INSTALL_WG
-            read -p "Xray Multi-SNI kur? (y/n): " INSTALL_XRAY
-            read -p "Hysteria2 Ultimate kur? (y/n): " INSTALL_HY2
-            read -p "TUIC v5 kur? (y/n): " INSTALL_TUIC
-            read -p "Sing-Box kur? (y/n): " INSTALL_SINGBOX
-            read -p "SSH-TLS WhatsApp kur? (y/n): " INSTALL_SSHTLS
-            read -p "Ultimate DNS kur? (y/n): " INSTALL_DNS
+            info "Custom Ultimate modu seçildi: Seçenekleri belirleyin"
+            read -p "XanMod Kernel kurulsun mu? (y/n): " INSTALL_XANMOD
+            read -p "WireGuard Ultimate kurulsun mu? (y/n): " INSTALL_WG
+            read -p "Xray Multi-SNI kurulsun mu? (y/n): " INSTALL_XRAY
+            read -p "Hysteria2 Ultimate kurulsun mu? (y/n): " INSTALL_HY2
+            read -p "TUIC v5 kurulsun mu? (y/n): " INSTALL_TUIC
+            read -p "Sing-Box Ultimate kurulsun mu? (y/n): " INSTALL_SINGBOX
+            read -p "SSH-TLS WhatsApp kurulsun mu? (y/n): " INSTALL_SSHTLS
+            read -p "Ultimate DNS kurulsun mu? (y/n): " INSTALL_DNS
             
             [[ $INSTALL_XANMOD =~ ^[Yy]$ ]] && install_xanmod_kernel
             optimize_system_ultimate
             [[ $INSTALL_WG =~ ^[Yy]$ ]] && install_wireguard_ultimate
-            [[ $INSTALL_XRAY =~ ^[Yy]$ ]] && install_xray_ultimate
+            if [[ $INSTALL_XRAY =~ ^[Yy]$ ]]; then
+                install_xray_ultimate
+                if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
+            fi
             [[ $INSTALL_HY2 =~ ^[Yy]$ ]] && install_hysteria2_ultimate
             [[ $INSTALL_TUIC =~ ^[Yy]$ ]] && install_tuic_ultimate
             [[ $INSTALL_SINGBOX =~ ^[Yy]$ ]] && install_singbox_ultimate
@@ -1618,32 +1400,155 @@ main_ultimate_install() {
             [[ $INSTALL_DNS =~ ^[Yy]$ ]] && setup_ultimate_dns
             ;;
         5) # MAXIMUM OVERDRIVE
+            info "MAXIMUM OVERDRIVE modu seçildi: Tüm servisler ve optimizasyonlar kuruluyor!"
             install_xanmod_kernel
             optimize_system_ultimate
             install_wireguard_ultimate
             install_xray_ultimate
+            if [ "$INSTALL_UI_PANEL" = "y" ]; then install_3x_ui_panel; fi
             install_hysteria2_ultimate
             install_tuic_ultimate
             install_singbox_ultimate
             install_ssh_tls_ultimate
-            setup_ultimate_dns
-            ;; ^[Yy]$ ]] && install_singbox_ultimate
-            [[ $INSTALL_DNS =~ ^[Yy]$ ]] && setup_ultimate_dns
-            ;;
-        5) # MAXIMUM OVERDRIVE
-            install_xanmod_kernel
-            optimize_system_ultimate
-            install_wireguard_ultimate
-            install_xray_ultimate
-            install_hysteria2_ultimate
-            install_tuic_ultimate
-            install_singbox_ultimate
             setup_ultimate_dns
             ;;
         *)
             error "Geçersiz Ultimate Mode seçimi!"
             ;;
     esac
+}
+
+# User Management Script
+install_vpn_manager() {
+    ultimate "Kullanıcı Yönetim Script'i (vpn-manager) kuruluyor..."
+
+    cat > /usr/local/bin/vpn-manager << 'EOF'
+#!/bin/bash
+
+# Renkler
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+XRAY_CONFIG="/usr/local/etc/xray/config.json"
+VLESS_TAG="vless-reality-whatsapp"
+
+# Root kontrolü
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}Bu script root yetkileri ile çalıştırılmalıdır (sudo kullanın)${NC}"
+   exit 1
+fi
+
+if [ ! -f "$XRAY_CONFIG" ]; then
+    echo -e "${RED}Xray yapılandırma dosyası bulunamadı: $XRAY_CONFIG${NC}"
+    echo -e "${YELLOW}Lütfen önce Xray'i kurduğunuzdan emin olun.${NC}"
+    exit 1
+fi
+
+list_users() {
+    echo -e "${BLUE}--- Xray VLESS Kullanıcıları ---${NC}"
+    jq -r ".inbounds[] | select(.tag==\"$VLESS_TAG\") | .settings.clients[] | \"- \(.email) (${GREEN}\(.id)${NC})\"" $XRAY_CONFIG
+    echo "--------------------------------"
+}
+
+add_user() {
+    read -p "Yeni kullanıcı için bir isim/e-posta girin: " email
+    if [ -z "$email" ]; then
+        echo -e "${RED}İsim boş olamaz.${NC}"
+        return
+    fi
+
+    # E-postanın zaten var olup olmadığını kontrol et
+    if jq -e ".inbounds[] | select(.tag==\"$VLESS_TAG\") | .settings.clients[] | select(.email==\"$email\")" $XRAY_CONFIG > /dev/null; then
+        echo -e "${RED}Bu isimde bir kullanıcı zaten var: $email${NC}"
+        return
+    fi
+
+    uuid=$(cat /proc/sys/kernel/random/uuid)
+
+    # jq ile yeni kullanıcıyı ekle
+    jq --arg email "$email" --arg uuid "$uuid" \
+    '.inbounds |= map(if .tag == "$VLESS_TAG" then .settings.clients += [{"id": $uuid, "email": $email, "flow": "xtls-rprx-vision"}] else . end)' \
+    $XRAY_CONFIG > ${XRAY_CONFIG}.tmp && mv ${XRAY_CONFIG}.tmp $XRAY_CONFIG
+
+    echo -e "${GREEN}Kullanıcı başarıyla eklendi:${NC}"
+    echo -e "  İsim: $email"
+    echo -e "  UUID: $uuid"
+
+    systemctl restart xray
+    echo -e "${YELLOW}Xray servisi yeniden başlatıldı.${NC}"
+}
+
+delete_user() {
+    list_users
+    read -p "Silmek istediğiniz kullanıcının ismini/e-postasını girin: " email
+    if [ -z "$email" ]; then
+        echo -e "${RED}İsim boş olamaz.${NC}"
+        return
+    fi
+
+    # Kullanıcının var olup olmadığını kontrol et
+    if ! jq -e ".inbounds[] | select(.tag==\"$VLESS_TAG\") | .settings.clients[] | select(.email==\"$email\")" $XRAY_CONFIG > /dev/null; then
+        echo -e "${RED}Kullanıcı bulunamadı: $email${NC}"
+        return
+    fi
+
+    # jq ile kullanıcıyı sil
+    jq --arg email "$email" \
+    '.inbounds |= map(if .tag == "$VLESS_TAG" then .settings.clients |= map(select(.email != $email)) else . end)' \
+    $XRAY_CONFIG > ${XRAY_CONFIG}.tmp && mv ${XRAY_CONFIG}.tmp $XRAY_CONFIG
+
+    echo -e "${GREEN}Kullanıcı '$email' başarıyla silindi.${NC}"
+
+    systemctl restart xray
+    echo -e "${YELLOW}Xray servisi yeniden başlatıldı.${NC}"
+}
+
+main_menu() {
+    while true; do
+        echo
+        echo -e "${BLUE}Ultimate VPN Yönetim Paneli${NC}"
+        echo "--------------------------"
+        echo "1) Xray VLESS Kullanıcısı Ekle"
+        echo "2) Xray VLESS Kullanıcısı Sil"
+        echo "3) Xray VLESS Kullanıcılarını Listele"
+        echo "4) Çıkış"
+        echo "--------------------------"
+        read -p "Seçiminiz (1-4): " choice
+
+        case $choice in
+            1) add_user ;;
+            2) delete_user ;;
+            3) list_users ;;
+            4) exit 0 ;;
+            *) echo -e "${RED}Geçersiz seçim.${NC}" ;;
+        esac
+    done
+}
+
+main_menu
+EOF
+
+    chmod +x /usr/local/bin/vpn-manager
+    success "Kullanıcı yönetim script'i kuruldu. Komut: vpn-manager"
+}
+
+# 3x-ui Panel Installation
+install_3x_ui_panel() {
+    ultimate "3x-ui Web Yönetim Paneli kuruluyor..."
+
+    # Run the official installer
+    bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+
+    if [ $? -eq 0 ]; then
+        success "3x-ui paneli başarıyla kuruldu."
+        info "Panel bilgilerine ve yapılandırma seçeneklerine erişmek için 'x-ui' komutunu kullanabilirsiniz."
+        warn "Güvenlik için, kurulum sonrası ilk iş olarak varsayılan kullanıcı adı ve şifreyi değiştirin."
+    else
+        error "3x-ui panel kurulumu sırasında bir hata oluştu."
+    fi
 }
 
 # Performance Monitoring Setup
@@ -1683,7 +1588,7 @@ systemctl is-active wg-quick@wg0 2>/dev/null && echo "✓ WireGuard: $(systemctl
 systemctl is-active xray 2>/dev/null && echo "✓ Xray WhatsApp: $(systemctl is-active xray)"
 systemctl is-active hysteria-ultimate 2>/dev/null && echo "✓ Hysteria2 WhatsApp: $(systemctl is-active hysteria-ultimate)"
 systemctl is-active tuic-ultimate 2>/dev/null && echo "✓ TUIC WhatsApp: $(systemctl is-active tuic-ultimate)"
-systemctl is-active sing-box-ultimate 2>/dev/null && echo "✓ Sing-Box WhatsApp: $(systemctl is-active sing-box-ultimate)"
+systemctl is-active sing-box 2>/dev/null && echo "✓ Sing-Box WhatsApp: $(systemctl is-active sing-box)"
 systemctl is-active ssh-tls-ultimate 2>/dev/null && echo "✓ SSH-TLS WhatsApp: $(systemctl is-active ssh-tls-ultimate)"
 systemctl is-active dropbear 2>/dev/null && echo "✓ Dropbear SSH: $(systemctl is-active dropbear)"
 systemctl is-active adguardhome 2>/dev/null && echo "✓ AdGuard DNS: $(systemctl is-active adguardhome)"
@@ -1734,16 +1639,25 @@ EOF
 EOF
     fi
     
-    if systemctl is-active --quiet xray; then
+    if [ "$INSTALL_UI_PANEL" = "y" ]; then
         cat >> /root/ultimate-vpn-report.txt << EOF
-✅ Xray Ultimate Multi-SNI Reality + WhatsApp - Port: 443/TCP
-   VLESS Reality: Ultra stealth WhatsApp bypass
-   VMess WebSocket: Port 8080/TCP (WhatsApp masking)
-   Trojan WebSocket: Port 8443/TCP (WhatsApp)
-   Shadowsocks: Port 9443/TCP (ChaCha20-Poly1305)
+✅ 3x-ui Web Yönetim Paneli
+   Xray yönetimi için web arayüzü kuruldu.
+   Panele erişmek ve varsayılan ayarları görmek için sunucuda 'x-ui' komutunu çalıştırın.
+   Güvenlik için ilk girişte kullanıcı adı ve şifreyi değiştirmeyi unutmayın.
+
+EOF
+    elif systemctl is-active --quiet xray; then
+        cat >> /root/ultimate-vpn-report.txt << EOF
+✅ Xray Ultimate (Manuel Kurulum)
+   VLESS Reality: Port 443/TCP
+   VMess WebSocket: Port 8080/TCP
+   VLESS-gRPC: Port 8082/TCP
+   Trojan WebSocket: Port 8443/TCP
+   Shadowsocks 2022: Port 9443/TCP
    Config Details: /etc/xray-ultimate-configs.txt
-   SNI Masquerading: web.whatsapp.com, wa.me, whatsapp.com
-   WhatsApp Domains: $(echo $WHATSAPP_SNIS | tr ',' ' ')
+   Yönetim Aracı: vpn-manager
+   TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
     fi
@@ -1752,10 +1666,8 @@ EOF
         cat >> /root/ultimate-vpn-report.txt << EOF
 ✅ Hysteria2 Ultimate + WhatsApp Bypass - Port: 36712/UDP
    Speed: 1000 Mbps (Both directions)
-   Protocol: QUIC with BBR
    Client Config: /etc/hysteria/client-ultimate.yaml
-   Masquerade: https://web.whatsapp.com
-   WhatsApp ACL: Direct routing enabled
+   TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
     fi
@@ -1765,18 +1677,18 @@ EOF
 ✅ TUIC v5 Ultimate + WhatsApp Speed - Port: 8443/UDP
    Protocol: QUIC v1 with BBR
    Client Config: /etc/tuic/client.json
-   Features: Zero-RTT, Multiplexing, Dual-Stack
-   SNI: web.whatsapp.com
+   TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
     fi
     
-    if systemctl is-active --quiet sing-box-ultimate; then
+    if systemctl is-active --quiet sing-box; then
         cat >> /root/ultimate-vpn-report.txt << EOF
 ✅ Sing-Box Ultimate + WhatsApp Multi-Protocol
    VLESS Reality: Port 9443/TCP (WhatsApp SNI)
    Hysteria2: Port 36713/UDP (WhatsApp masquerade)
-   Advanced WhatsApp routing rules
+   Config Details: /etc/sing-box/client-configs.txt
+   TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
     fi
@@ -1784,11 +1696,9 @@ EOF
     if systemctl is-active --quiet ssh-tls-ultimate; then
         cat >> /root/ultimate-vpn-report.txt << EOF
 ✅ SSH-TLS Ultimate WhatsApp VPN
-   SSH-TLS Stunnel: Ports 443, 22443, 8443, 9443/TCP
-   Dropbear SSH: Ports 444, 8080, 9080, 10443/TCP
-   SSH Tunnels: Port 2443, 8022/TCP
-   WhatsApp Web SNI masquerading
-   Client Helper: ssh-whatsapp-tunnel
+   SSH-TLS Stunnel: Port 443/TCP
+   Dropbear SSH: Ports 444, 8080, 9080/TCP
+   TLS SNI: ${LETSENCRYPT_DOMAIN:-Self-Signed}
    
 EOF
     fi
@@ -1821,7 +1731,7 @@ $(if [[ -f /boot/vmlinuz-*xanmod* ]]; then echo "✅ XanMod High-Performance Ker
 ✅ WhatsApp Web SNI masquerading  
 ✅ Reality Protocol (Anti-detection)
 ✅ TLS 1.3 Everywhere
-✅ Self-signed certificates
+✅ $(if [ "$USE_LETSENCRYPT" = "y" ]; then echo "Let's Encrypt SSL: $LETSENCRYPT_DOMAIN"; else echo "Self-Signed SSL"; fi)
 ✅ Advanced firewall rules
 ✅ DPI evasion techniques
 ✅ SSH-TLS tunneling
@@ -1833,6 +1743,7 @@ Sunucu IP: $SERVER_IP
 VPN Kullanıcı: $VPN_USER
 VPN Şifre: $VPN_PASS
 Camouflage: $CAMOUFLAGE_DOMAIN
+$(if [ "$USE_LETSENCRYPT" = "y" ]; then echo "Alan Adı: $LETSENCRYPT_DOMAIN"; fi)
 
 📱 İstemci Uygulamaları:
 =====================================
@@ -1863,6 +1774,7 @@ AdGuard DNS: System DNS Settings
 
 📈 İZLEME VE YÖNETİM:
 =====================================
+Kullanıcı Yönetimi: vpn-manager (Xray VLESS kullanıcıları için)
 Performans İzleme: vpn-monitor
 Log dosyaları: /var/log/
 Günlük rapor: /var/log/vpn-daily-report.log
@@ -1902,6 +1814,15 @@ apt install -y curl wget git vim htop tree unzip software-properties-common \
 main_ultimate_install
 setup_ultimate_firewall
 setup_monitoring
+
+# Manuel kurulumda vpn-manager'ı kur, UI panel seçilmediyse
+if [ "$INSTALL_UI_PANEL" = "n" ]; then
+    # Sadece Xray kurulduysa vpn-manager'ı kur
+    if command -v xray &> /dev/null && [ -f "/usr/local/etc/xray/config.json" ]; then
+        install_vpn_manager
+    fi
+fi
+
 generate_ultimate_report
 
 # Final message
@@ -1917,18 +1838,18 @@ systemctl list-units --type=service --state=active | grep -E "(wg-quick|xray|hys
 echo
 info "📊 Detaylı rapor: /root/ultimate-vpn-report.txt"
 info "📈 Performans monitor: vpn-monitor"
+info "👤 Kullanıcı yönetimi: vpn-manager"
 info "🌐 Konfigürasyon dosyaları ilgili dizinlerde"
-info "🚀 WhatsApp tunnel: ssh-whatsapp-tunnel"
 
 echo
 warn "🚨 ÖNEMLİ ULTIMATE + WHATSAPP NOTLARI:"
 warn "1. $(if [[ $ULTIMATE_CHOICE == "5" ]]; then echo "MAXIMUM OVERDRIVE MODE - XanMod kernel + WhatsApp bypass kuruldu"; else echo "Sistem + WhatsApp bypass optimize edildi"; fi)"
 warn "2. BBR v2 ve TCP optimizasyonları aktif"
-warn "3. Multi-SNI + WhatsApp bypass teknolojileri kuruldu"
-warn "4. SSH-TLS WhatsApp tunnel aktif (Port: 22443)"
-warn "5. QoS traffic shaping + WhatsApp priority aktif"
-warn "6. Performance monitoring kuruldu"
-warn "7. WhatsApp Web SNI masquerading: web.whatsapp.com, wa.me"
+warn "3. Sertifika Türü: $(if [ "$USE_LETSENCRYPT" = "y" ]; then echo "Let's Encrypt ($LETSENCRYPT_DOMAIN)"; else echo "Kendinden İmzalı (Self-Signed)"; fi)"
+warn "4. Multi-SNI + WhatsApp bypass teknolojileri kuruldu"
+warn "5. SSH-TLS tunnel aktif"
+warn "6. QoS traffic shaping + WhatsApp priority aktif"
+warn "7. Performance monitoring kuruldu"
 
 echo
 if [[ $ULTIMATE_CHOICE == "5" ]] || [[ $INSTALL_XANMOD =~ ^[Yy]$ ]]; then
