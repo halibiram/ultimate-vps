@@ -824,13 +824,16 @@ install_ssh_tls_ultimate() {
     
     # SSH-TLS Stunnel config for WhatsApp bypass
     cat > /etc/stunnel/ssh-tls.conf << EOF
-# SSH-TLS Ultimate WhatsApp Configuration
+# SSH-TLS Ultimate Performance Configuration
 cert = /etc/stunnel/stunnel.pem
 pid = /var/run/stunnel-ssh.pid
 debug = 3
 sslVersion = all
 options = NO_SSLv2
 options = NO_SSLv3
+options = CIPHER_SERVER_PREFERENCE
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
 
 [ssh-tls-443]
 accept = 443
@@ -838,10 +841,10 @@ connect = 127.0.0.1:22
 sni = $tls_sni
 EOF
 
-    # Optimize SSH server for WhatsApp traffic patterns
+    # Optimize SSH server for performance
     cat >> /etc/ssh/sshd_config << EOF
 
-# === SSH-TLS ULTIMATE WHATSAPP OPTIMIZATION ===
+# === SSH-TLS ULTIMATE PERFORMANCE OPTIMIZATION ===
 Port 22
 TCPKeepAlive yes
 ClientAliveInterval 30
@@ -852,6 +855,9 @@ GatewayPorts yes
 PermitTunnel yes
 PasswordAuthentication yes
 PermitRootLogin yes
+Compression delayed
+Ciphers aes128-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 EOF
 
     # Dropbear config for additional bypass

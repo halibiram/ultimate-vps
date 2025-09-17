@@ -18,6 +18,7 @@ Bu script, Debian-tabanlı Linux sunucularında kapsamlı ve yüksek performansl
   - Artırılmış dosya tanımlayıcı ve process limitleri
 - **Gelişmiş Güvenlik ve Gizlilik:**
   - **Let's Encrypt Entegrasyonu:** Alan adınız için otomatik olarak geçerli SSL sertifikaları alır ve yeniler.
+  - **Performans Odaklı SSH-TLS:** SSH tünel performansı, daha hızlı şifrelemeler ve ağ ayarları ile optimize edilmiştir.
   - **Multi-SNI Domain Fronting:** Trafiği popüler web siteleri (Google, Amazon, vb.) arkasına gizler.
   - **XTLS-Reality:** Gelişmiş sansür sistemlerine karşı sunucu parmak izini ortadan kaldırır.
   - **gRPC Desteği:** Xray için ek bir transport protokolü sunarak gizliliği artırır.
