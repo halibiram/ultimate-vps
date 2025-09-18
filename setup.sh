@@ -32,10 +32,6 @@ SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.
 # The password will be set during the installation.
 PANEL_USER="admin"
 
-# --- WireGuard Configuration ---
-# Set the password for the wg-easy web UI.
-WG_PASS="wireguard_password"
-
 # --- Color Codes for Output ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -418,6 +414,19 @@ EOF
 setup_vpn_containers() {
     print_status "[6/13] Deploying VPN containers..."
 
+    # Interactively set the WireGuard password
+    while true; do
+        read -sp "Enter a password for the WireGuard Web UI: " WG_PASS
+        echo
+        read -sp "Confirm password: " WG_PASS_CONFIRM
+        echo
+        if [ "$WG_PASS" = "$WG_PASS_CONFIRM" ] && [ -n "$WG_PASS" ]; then
+            break
+        else
+            print_error "Passwords do not match or are empty. Please try again."
+        fi
+    done
+
     # Create directories for VPN configurations
     mkdir -p /opt/vpn/{wireguard,openvpn}
     mkdir -p /etc/wireguard
@@ -602,6 +611,9 @@ setup_security() {
     ufw allow 51820/udp comment 'WireGuard'
     ufw allow 1194/udp comment 'OpenVPN'
     ufw allow 80/tcp comment 'HTTP'
+    ufw allow 51821/tcp comment 'WireGuard UI'
+    ufw allow 8080/tcp comment 'Control Panel'
+    ufw allow 19999/tcp comment 'Netdata'
     ufw --force enable
 
     # Configure Fail2ban
