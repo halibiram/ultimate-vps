@@ -28,10 +28,9 @@ SERVICE_TYPE="SERVER/VPN/SSH"
 SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.org,facebook.com,instagram.com,twitter.com"
 
 # --- Control Panel Credentials ---
-# Set the username and password for the web control panel.
-# IMPORTANT: Change this password for a secure deployment.
+# The username for the control panel is 'admin'.
+# The password will be set during the installation.
 PANEL_USER="admin"
-PANEL_PASS="password123"
 
 # --- WireGuard Configuration ---
 # Set the password for the wg-easy web UI.
@@ -92,6 +91,21 @@ print_warning() {
 #
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+#
+# Fetches the public IP address from multiple sources for reliability.
+#
+get_public_ip() {
+    IP=$(curl -4s https://icanhazip.com)
+    if [ -z "$IP" ]; then
+        IP=$(curl -4s https://ifconfig.me)
+    fi
+    if [ -z "$IP" ]; then
+        print_error "Failed to retrieve public IP address."
+        exit 1
+    fi
+    echo $IP
 }
 
 
@@ -353,7 +367,7 @@ case "$1" in
         iptables -A INPUT -p udp --dport 443 -j ACCEPT
         echo "SSH VPN ready. Connection info:"
         echo "SSH Ports: 22, 443"
-        echo "IP: $(curl -4s ifconfig.co)"
+        echo "IP: $(get_public_ip)"
         ;;
     stop)
         echo "Stopping SSH VPN service..."
@@ -412,7 +426,7 @@ setup_vpn_containers() {
     # Deploy WireGuard (wg-easy) container
     docker run -d \
       --name=wg-easy \
-      -e WG_HOST=$(curl -4s ifconfig.co) \
+      -e WG_HOST=$(get_public_ip) \
       -e PASSWORD="$WG_PASS" \
       -e WG_PORT=51820 \
       -e WG_DEFAULT_ADDRESS=10.8.0.x \
@@ -558,9 +572,7 @@ http {
 }
 EOF
 
-    # Pre-configure default SNI proxy domains
-    /usr/local/bin/panel-sni-add whatsapp.com
-    /usr/local/bin/panel-sni-add web.whatsapp.com
+    # SNI proxy domains can be added via the control panel.
 
     # Start and enable Nginx
     systemctl start nginx
@@ -817,8 +829,8 @@ final_test() {
     # Display network connection info
     echo "Network endpoints:"
     echo "  SSH VPN:     22/tcp, 443/tcp"
-    echo "  WireGuard:   udp://$(curl -4s ifconfig.co):51820"
-    echo "  OpenVPN:     udp://$(curl -4s ifconfig.co):1194"
+    echo "  WireGuard:   udp://$(get_public_ip):51820"
+    echo "  OpenVPN:     udp://$(get_public_ip):1194"
     echo "  HTTP/HTTPS:  80/tcp, 443/tcp"
 
     # Display resource usage
@@ -838,7 +850,7 @@ final_test() {
 show_info() {
     print_status "[13/13] Installation complete! See details below."
 
-    PUBLIC_IP=$(curl -4s ifconfig.co)
+    PUBLIC_IP=$(get_public_ip)
     USERNAME=$(whoami)
 
     echo ""
@@ -846,11 +858,14 @@ show_info() {
     echo "Server IP: $PUBLIC_IP"
     echo "SSH Login: ssh -p 22 $USERNAME@$PUBLIC_IP"
     echo "SSH VPN Tunnel: ssh -p 443 -D 1080 $USERNAME@$PUBLIC_IP"
-    echo "Control Panel: http://$PUBLIC_IP:8080"
-    echo "  - User: $PANEL_USER"
-    echo "  - Pass: $PANEL_PASS"
-    echo "WireGuard Admin UI: http://$PUBLIC_IP:51821 (or via Control Panel)"
-    echo "  - WG Pass: $WG_PASS"
+    echo "--- Web Control Panel (for managing users & SNI) ---"
+    echo "URL: http://$PUBLIC_IP:8080"
+    echo "User: $PANEL_USER"
+    echo "Password: [The password you set during installation]"
+    echo ""
+    echo "--- WireGuard UI (for managing VPN clients) ---"
+    echo "URL: http://$PUBLIC_IP:51821 (also linked from Control Panel)"
+    echo "Password: $WG_PASS"
     echo "Netdata Monitor: http://$PUBLIC_IP:19999"
     echo "Swap Space: $(free -h | awk '/Swap:/ {print $2}')"
     echo "======================================="
@@ -995,6 +1010,19 @@ button[value="remove"] {
     margin-bottom: 20px;
 }
 EOF
+
+    # Interactively set the control panel password
+    while true; do
+        read -sp "Enter a password for the control panel admin user: " PANEL_PASS
+        echo
+        read -sp "Confirm password: " PANEL_PASS_CONFIRM
+        echo
+        if [ "$PANEL_PASS" = "$PANEL_PASS_CONFIRM" ] && [ -n "$PANEL_PASS" ]; then
+            break
+        else
+            print_error "Passwords do not match or are empty. Please try again."
+        fi
+    done
 
     # Create .htpasswd file for basic authentication
     htpasswd -cb /etc/nginx/.htpasswd "$PANEL_USER" "$PANEL_PASS"
