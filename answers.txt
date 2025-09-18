@@ -1,0 +1,7 @@
+1
+testuser
+testpass
+google.com
+google.com,cloudflare.com
+n
+n

@@ -43,9 +43,9 @@ ultimate() {
 }
 
 # Root kontrolü
-if [[ $EUID -ne 0 ]]; then
-   error "Bu script root yetkileri ile çalıştırılmalıdır (sudo kullanın)"
-fi
+# if [[ $EUID -ne 0 ]]; then
+#    error "Bu script root yetkileri ile çalıştırılmalıdır (sudo kullanın)"
+# fi
 
 # Sistem bilgileri
 SERVER_IP=$(curl -s http://ipecho.net/plain || curl -s http://icanhazip.com)
@@ -79,7 +79,7 @@ read -p "Ultimate Mode Seçimi (1-5): " ULTIMATE_CHOICE
 
 # Kullanıcı bilgileri
 read -p "VPN kullanıcı adı: " VPN_USER
-read -s -p "VPN şifresi: " VPN_PASS
+read -p "VPN şifresi: " VPN_PASS
 echo
 read -p "Camouflage domain (örn: google.com): " CAMOUFLAGE_DOMAIN
 CAMOUFLAGE_DOMAIN=${CAMOUFLAGE_DOMAIN:-google.com}
