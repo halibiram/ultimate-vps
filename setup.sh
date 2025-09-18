@@ -32,10 +32,6 @@ SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.
 # The password will be set during the installation.
 PANEL_USER="admin"
 
-# --- WireGuard Configuration ---
-# Set the password for the wg-easy web UI.
-WG_PASS="wireguard_password"
-
 # --- Color Codes for Output ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -354,56 +350,6 @@ EOF
     # Restart SSH service
     systemctl restart ssh
 
-    # Create a helper script for the SSH VPN service
-    cat > /usr/local/bin/ssh-vpn-server << 'EOF'
-#!/bin/bash
-# This script manages iptables rules for the SSH VPN service.
-case "$1" in
-    start)
-        echo "Starting SSH VPN service..."
-        # Allow SSH traffic on ports 22 and 443
-        iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-        iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-        iptables -A INPUT -p udp --dport 443 -j ACCEPT
-        echo "SSH VPN ready. Connection info:"
-        echo "SSH Ports: 22, 443"
-        echo "IP: $(get_public_ip)"
-        ;;
-    stop)
-        echo "Stopping SSH VPN service..."
-        ;;
-    status)
-        echo "SSH VPN Status:"
-        netstat -tulpn | grep ssh
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|status}"
-        exit 1
-        ;;
-esac
-EOF
-
-    chmod +x /usr/local/bin/ssh-vpn-server
-
-    # Create systemd service file for SSH VPN
-    cat > /etc/systemd/system/ssh-vpn.service << EOF
-[Unit]
-Description=SSH VPN Service
-After=network.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/ssh-vpn-server start
-ExecStop=/usr/local/bin/ssh-vpn-server stop
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable ssh-vpn
-    systemctl start ssh-vpn
 
     print_success "SSH VPN setup complete."
 }
@@ -417,6 +363,19 @@ EOF
 #
 setup_vpn_containers() {
     print_status "[6/13] Deploying VPN containers..."
+
+    # Interactively set the WireGuard password
+    while true; do
+        read -sp "Enter a password for the WireGuard Web UI: " WG_PASS
+        echo
+        read -sp "Confirm password: " WG_PASS_CONFIRM
+        echo
+        if [ "$WG_PASS" = "$WG_PASS_CONFIRM" ] && [ -n "$WG_PASS" ]; then
+            break
+        else
+            print_error "Passwords do not match or are empty. Please try again."
+        fi
+    done
 
     # Create directories for VPN configurations
     mkdir -p /opt/vpn/{wireguard,openvpn}
@@ -602,6 +561,9 @@ setup_security() {
     ufw allow 51820/udp comment 'WireGuard'
     ufw allow 1194/udp comment 'OpenVPN'
     ufw allow 80/tcp comment 'HTTP'
+    ufw allow 51821/tcp comment 'WireGuard UI'
+    ufw allow 8080/tcp comment 'Control Panel'
+    ufw allow 19999/tcp comment 'Netdata'
     ufw --force enable
 
     # Configure Fail2ban
