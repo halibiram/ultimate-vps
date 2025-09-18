@@ -1,191 +1,227 @@
 #!/bin/bash
 
-# Ultimate VDS/VPN Kurulum Scripti
-# 2GB RAM için optimize edilmiş ve swap alanı otomatik eklenmiştir
-# SSH VPN ve diğer tüm bileşenler en güncel sürümleriyle kurulacaktır
+# =================================================================
+# Ultimate Server Setup Script
+#
+# This script automates the configuration of a complete server
+# environment on Debian-based systems. It is optimized for
+# machines with at least 2GB of RAM and includes automatic swap
+# configuration.
+#
+# Services Installed:
+# - Docker & Containerd
+# - Nginx
+# - WireGuard (via wg-easy)
+# - OpenVPN (via kylemanna/openvpn)
+# - SSH VPN (on port 443)
+# - Netdata (for monitoring)
+# - UFW & Fail2ban (for security)
+#
+# =================================================================
 
-# Config Bölümü
+# --- Script Configuration ---
+# These variables are placeholders and are not actively used by the script's
+# current logic but can be used for future enhancements.
 CONFIG_FILE="/etc/ultimate_vpn/config.cfg"
 TARGET_LEVEL="ULTIMATE"
-SERVICE_TYPE="VDS/VPN/SSH"
+SERVICE_TYPE="SERVER/VPN/SSH"
 SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.org,facebook.com,instagram.com,twitter.com"
 
-# Renkli çıktı fonksiyonları
+# --- Color Codes for Output ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# --- Logging Functions ---
+
+#
+# Prints an informational message.
+# Globals:
+#   BLUE
+#   NC
+# Arguments:
+#   $1 - The message to print.
+#
 print_status() {
     echo -e "${BLUE}[INFO]${NC} $1"
 }
 
+#
+# Prints a success message.
+# Globals:
+#   GREEN
+#   NC
+# Arguments:
+#   $1 - The message to print.
+#
 print_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
+#
+# Prints a warning message.
+# Globals:
+#   YELLOW
+#   NC
+# Arguments:
+#   $1 - The message to print.
+#
 print_warning() {
     echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
+#
+# Prints an error message.
+# Globals:
+#   RED
+#   NC
+# Arguments:
+#   $1 - The message to print.
+#
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Swap alanı oluştur (2GB RAM için)
+
+# --- Setup Functions ---
+
+#
+# Configures a swap file for the system.
+# This function checks for existing swap space. If it's less than 2GB,
+# it creates a new 4GB swap file, which is optimal for servers with 2GB of RAM.
+# It also tunes swappiness and cache pressure settings for better performance.
+#
 setup_swap() {
-    print_status "[1/13] Swap alanı yapılandırılıyor..."
-    
-    # Mevcut swap'ı kontrol et
+    print_status "[1/13] Configuring swap space..."
+
+    # Check if sufficient swap already exists
     CURRENT_SWAP=$(free -m | awk '/Swap:/ {print $2}')
     if [ $CURRENT_SWAP -ge 2048 ]; then
-        print_success "Yeterli swap alanı mevcut: ${CURRENT_SWAP}MB"
+        print_success "Sufficient swap space already exists: ${CURRENT_SWAP}MB"
         return 0
     fi
-    
-    # Mevcut swap'ı kaldır (eğer yetersizse)
+
+    # Remove existing swap file if it's insufficient
     if [ $CURRENT_SWAP -gt 0 ]; then
         swapoff /swapfile 2>/dev/null
         rm -f /swapfile
     fi
-    
-    # 4GB swap dosyası oluştur (2GB RAM için)
+
+    # Create a 4GB swap file
     SWAP_SIZE=4096
     dd if=/dev/zero of=/swapfile bs=1M count=$SWAP_SIZE
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
-    
-    # Kalıcı yap
+
+    # Make the swap file permanent
     echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    
-    # Swap ayarlarını optimize et
+
+    # Optimize swap settings
     echo 'vm.swappiness=10' >> /etc/sysctl.conf
     echo 'vm.vfs_cache_pressure=50' >> /etc/sysctl.conf
     sysctl -p
-    
-    print_success "Swap alanı oluşturuldu: ${SWAP_SIZE}MB"
+
+    print_success "Swap space created: ${SWAP_SIZE}MB"
 }
 
-# Sistem gereksinimlerini kontrol et
+#
+# Checks if the system meets the minimum requirements.
+# The script is optimized for at least 1GB RAM, 10GB disk space,
+# and 1 CPU core. It also checks for a compatible Ubuntu version.
+#
 check_system() {
-    print_status "[2/13] Sistem gereksinimleri kontrol ediliyor..."
-    
-    # Minimum gereksinimler (2GB RAM için optimize edilmiş)
+    print_status "[2/13] Checking system requirements..."
+
+    # Minimum requirements
     MIN_RAM=1024  # 1GB minimum
     MIN_DISK=10   # 10GB disk
-    MIN_CORES=1   # 1 çekirdek
+    MIN_CORES=1   # 1 core
     OS_VERSION=$(lsb_release -rs)
-    
-    # OS versiyon kontrolü (Ubuntu 18.04+)
+
+    # Check OS version (Ubuntu 18.04+ recommended)
     if [[ $(echo "$OS_VERSION < 18.04" | bc -l) -eq 1 ]]; then
-        print_warning "Ubuntu 18.04 veya üzeri önerilir. Mevcut sürüm: $OS_VERSION"
+        print_warning "Ubuntu 18.04 or higher is recommended. Current version: $OS_VERSION"
     fi
 
-    # RAM kontrolü
+    # Check RAM
     RAM=$(free -m | awk '/Mem:/ {print $2}')
     if [ $RAM -lt $MIN_RAM ]; then
-        print_error "Yetersiz RAM. Minimum $MIN_RAM MB gereklidir. Mevcut: $RAM MB"
+        print_error "Insufficient RAM. Minimum $MIN_RAM MB required. Found: $RAM MB"
         exit 1
     fi
-    
-    # Disk kontrolü
+
+    # Check Disk Space
     DISK=$(df -BG / | awk 'NR==2 {print $4}' | tr -d 'G')
     if [ $DISK -lt $MIN_DISK ]; then
-        print_error "Yetersiz disk alanı. Minimum $MIN_DISK GB gereklidir. Mevcut: $DISK GB"
+        print_error "Insufficient disk space. Minimum $MIN_DISK GB required. Found: $DISK GB"
         exit 1
     fi
-    
-    # CPU kontrolü
+
+    # Check CPU cores
     CORES=$(nproc)
     if [ $CORES -lt $MIN_CORES ]; then
-        print_warning "Önerilen CPU çekirdeği: $MIN_CORES+. Mevcut: $CORES"
+        print_warning "Recommended CPU cores: $MIN_CORES+. Found: $CORES"
     fi
-    
-    print_success "Sistem gereksinimleri karşılandı - RAM: ${RAM}MB, Disk: ${DISK}GB, Çekirdek: $CORES"
+
+    print_success "System requirements met - RAM: ${RAM}MB, Disk: ${DISK}GB, Cores: $CORES"
 }
 
-# Temel paketleri kur
+#
+# Installs system-wide dependencies and updates the system.
+# This function performs a full system upgrade and installs essential packages
+# for networking, administration, security, and building software.
+#
 install_dependencies() {
-    print_status "[3/13] Temel paketler ve güncellemeler kuruluyor..."
-    
+    print_status "[3/13] Installing updates and essential packages..."
+
     export DEBIAN_FRONTEND=noninteractive
-    
-    # Sistem güncellemeleri
+
+    # Update system packages
     apt-get update
     apt-get upgrade -y
     apt-get dist-upgrade -y
-    
-    # Temel paketler (hafif sürümler)
-    apt-get install -y \
-        curl \
-        wget \
-        git \
-        build-essential \
-        libssl-dev \
-        libffi-dev \
-        python3 \
-        python3-pip \
-        python3-venv \
-        net-tools \
-        iptables-persistent \
-        fail2ban \
-        ufw \
-        openssl \
-        certbot \
-        python3-certbot-nginx \
-        software-properties-common \
-        apt-transport-https \
-        ca-certificates \
-        gnupg \
-        lsb-release \
-        jq \
-        htop \
-        iftop \
-        zip \
-        unzip \
-        nano \
-        vim \
-        resolvconf \
-        dnsutils \
-        iputils-ping \
-        traceroute \
-        mtr-tiny \
-        tcpdump \
-        socat \
-        netcat \
-        openssh-server \
-        openssh-client \
-        rsync \
-        cron \
-        logrotate \
-        sysstat \
-        iotop \
-        ethtool
 
-    # Python paketleri
+    # Install essential packages
+    apt-get install -y \
+        curl wget git build-essential libssl-dev libffi-dev \
+        python3 python3-pip python3-venv net-tools iptables-persistent \
+        fail2ban ufw openssl certbot python3-certbot-nginx \
+        software-properties-common apt-transport-https ca-certificates \
+        gnupg lsb-release jq htop iftop zip unzip nano vim resolvconf \
+        dnsutils iputils-ping traceroute mtr-tiny tcpdump socat netcat \
+        openssh-server openssh-client rsync cron logrotate sysstat \
+        iotop ethtool
+
+    # Install Python packages
     pip3 install --upgrade pip
     pip3 install requests docker
 
-    print_success "Temel paketler kuruldu"
+    print_success "Essential packages installed."
 }
 
-# Docker ve containerd kurulumu (hafif sürüm)
+#
+# Installs and configures Docker and Containerd.
+# This function removes old Docker versions, adds the official Docker GPG key
+# and repository, and installs the latest Docker CE, CLI, and Containerd.
+# It also configures the Docker daemon for optimized logging and resource limits.
+#
 install_docker() {
-    print_status "[4/13] Docker ve containerd kuruluyor..."
-    
-    # Eski Docker sürümlerini kaldır
+    print_status "[4/13] Installing Docker and Containerd..."
+
+    # Remove any old Docker versions
     apt-get remove -y docker docker-engine docker.io containerd runc
     rm -rf /var/lib/docker
     rm -rf /var/lib/containerd
 
-    # Docker GPG key ekle
+    # Add Docker's official GPG key
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
 
-    # Docker repository ekle
+    # Add the Docker repository
     echo \
       "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
       "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
@@ -193,21 +229,18 @@ install_docker() {
 
     apt-get update
 
-    # Docker kur (hafif sürüm)
-    apt-get install -y \
-        docker-ce \
-        docker-ce-cli \
-        containerd.io
+    # Install Docker packages
+    apt-get install -y docker-ce docker-ce-cli containerd.io
 
-    # Docker servisini başlat
+    # Start and enable Docker services
     systemctl start docker
     systemctl enable docker
     systemctl enable containerd
 
-    # Docker grup ayarları
+    # Add current user to the docker group
     usermod -aG docker $USER
 
-    # Docker daemon.json yapılandırması (kaynak sınırları ile)
+    # Configure the Docker daemon
     mkdir -p /etc/docker
     cat > /etc/docker/daemon.json << EOF
 {
@@ -229,17 +262,22 @@ install_docker() {
 }
 EOF
 
-    # Docker servisini yeniden başlat
+    # Restart Docker to apply changes
     systemctl restart docker
 
-    print_success "Docker ve containerd kurulumu tamamlandı"
+    print_success "Docker and Containerd installation complete."
 }
 
-# SSH VPN kurulumu
+#
+# Configures SSH to act as a VPN tunnel on port 443.
+# This function modifies the SSH server configuration to listen on both
+# port 22 and 443. It disables password authentication, enables tunneling,
+# and creates a systemd service to manage it.
+#
 setup_ssh_vpn() {
-    print_status "[5/13] SSH VPN kurulumu yapılıyor..."
-    
-    # SSH sunucusunu yapılandır
+    print_status "[5/13] Setting up SSH VPN..."
+
+    # Configure SSH server for VPN tunneling
     cat > /etc/ssh/sshd_config << EOF
 Port 22
 Port 443
@@ -280,39 +318,38 @@ ClientAliveCountMax 3
 AllowUsers $USER
 EOF
 
-    # SSH için anahtar oluştur (eğer yoksa)
+    # Generate SSH key if it doesn't exist
     if [ ! -f ~/.ssh/id_rsa ]; then
         ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
     fi
 
-    # SSH servisini yeniden başlat
+    # Restart SSH service
     systemctl restart ssh
 
-    # SSH VPN için özel script oluştur
+    # Create a helper script for the SSH VPN service
     cat > /usr/local/bin/ssh-vpn-server << 'EOF'
 #!/bin/bash
-
-# SSH VPN Server Script
+# This script manages iptables rules for the SSH VPN service.
 case "$1" in
     start)
-        echo "SSH VPN sunucusu başlatılıyor..."
-        # SSH portları aç
+        echo "Starting SSH VPN service..."
+        # Allow SSH traffic on ports 22 and 443
         iptables -A INPUT -p tcp --dport 22 -j ACCEPT
         iptables -A INPUT -p tcp --dport 443 -j ACCEPT
         iptables -A INPUT -p udp --dport 443 -j ACCEPT
-        echo "SSH VPN hazır. Bağlantı bilgileri:"
-        echo "SSH Port: 22, 443"
-        echo "IP: $(curl -4 ifconfig.co)"
+        echo "SSH VPN ready. Connection info:"
+        echo "SSH Ports: 22, 443"
+        echo "IP: $(curl -4s ifconfig.co)"
         ;;
     stop)
-        echo "SSH VPN sunucusu durduruluyor..."
+        echo "Stopping SSH VPN service..."
         ;;
     status)
-        echo "SSH VPN Durumu:"
+        echo "SSH VPN Status:"
         netstat -tulpn | grep ssh
         ;;
     *)
-        echo "Kullanım: $0 {start|stop|status}"
+        echo "Usage: $0 {start|stop|status}"
         exit 1
         ;;
 esac
@@ -320,7 +357,7 @@ EOF
 
     chmod +x /usr/local/bin/ssh-vpn-server
 
-    # SSH VPN servis dosyası oluştur
+    # Create systemd service file for SSH VPN
     cat > /etc/systemd/system/ssh-vpn.service << EOF
 [Unit]
 Description=SSH VPN Service
@@ -331,7 +368,6 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/local/bin/ssh-vpn-server start
 ExecStop=/usr/local/bin/ssh-vpn-server stop
-ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
 WantedBy=multi-user.target
@@ -341,22 +377,28 @@ EOF
     systemctl enable ssh-vpn
     systemctl start ssh-vpn
 
-    print_success "SSH VPN kurulumu tamamlandı"
+    print_success "SSH VPN setup complete."
 }
 
-# VPN konteynerlerini kur (hafif sürümler)
+#
+# Deploys WireGuard and OpenVPN containers using Docker.
+# This function creates necessary directories and then starts two Docker containers:
+# 1. wg-easy: A WireGuard server with a web UI for easy management.
+# 2. kylemanna/openvpn: A standard OpenVPN server.
+# Both containers are configured with resource limits.
+#
 setup_vpn_containers() {
-    print_status "[6/13] VPN konteynerleri kuruluyor..."
-    
-    # VPN dizinlerini oluştur
+    print_status "[6/13] Deploying VPN containers..."
+
+    # Create directories for VPN configurations
     mkdir -p /opt/vpn/{wireguard,openvpn}
     mkdir -p /etc/wireguard
     mkdir -p /etc/openvpn
 
-    # WireGuard (hafif sürüm)
+    # Deploy WireGuard (wg-easy) container
     docker run -d \
       --name=wg-easy \
-      -e WG_HOST=$(curl -4 ifconfig.co) \
+      -e WG_HOST=$(curl -4s ifconfig.co) \
       -e PASSWORD=$(openssl rand -base64 12) \
       -e WG_PORT=51820 \
       -e WG_DEFAULT_ADDRESS=10.8.0.x \
@@ -375,7 +417,7 @@ setup_vpn_containers() {
       --memory-swap=512m \
       weejewel/wg-easy:latest
 
-    # OpenVPN (hafif sürüm)
+    # Deploy OpenVPN container
     docker run -d \
       --name=openvpn \
       --cap-add=NET_ADMIN \
@@ -389,60 +431,63 @@ setup_vpn_containers() {
       --memory-swap=512m \
       kylemanna/openvpn:latest
 
-    print_success "VPN konteynerleri kuruldu: WireGuard, OpenVPN"
+    print_success "VPN containers deployed: WireGuard, OpenVPN"
 }
 
-# Nginx ve SNI optimizasyonu (hafif sürüm)
+#
+# Installs and configures Nginx for SNI proxying.
+# This function installs Nginx and sets up a configuration to proxy
+# traffic for specific hostnames (e.g., whatsapp.com). This can be used
+# to obfuscate traffic. It generates self-signed certificates for this purpose.
+#
 setup_nginx_sni() {
-    print_status "[7/13] Nginx ve SNI optimizasyonu yapılıyor..."
+    print_status "[7/13] Setting up Nginx and SNI proxy..."
 
-    # Nginx kur
+    # Install Nginx
     apt-get install -y nginx nginx-extras
 
-    # Özel SNI config dosyası oluştur
+    # Create directories for custom configs
     mkdir -p /etc/nginx/snippets
     mkdir -p /etc/nginx/ssl
 
-    # WhatsApp ve hassas SNI hostları için özel config
+    # Create SNI proxy configuration for specific hosts
     cat > /etc/nginx/snippets/sni_optimization.conf << 'EOF'
-# WhatsApp SNI optimizasyonu
+# SNI proxy for WhatsApp
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name whatsapp.com www.whatsapp.com;
-    
+
     ssl_certificate /etc/letsencrypt/live/whatsapp.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/whatsapp.com/privkey.pem;
 
-    # SSL optimizasyonları
+    # SSL Optimizations
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
-    
+
     location / {
         proxy_pass https://www.whatsapp.com;
         proxy_ssl_server_name on;
         proxy_ssl_name $host;
-
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
         proxy_connect_timeout 30s;
         proxy_send_timeout 30s;
         proxy_read_timeout 30s;
     }
 }
 
-# Diğer hassas SNI hostları
+# SNI proxy for other sensitive hosts
 server {
     listen 443 ssl http2;
     server_name web.whatsapp.com;
-    
+
     ssl_certificate /etc/letsencrypt/live/web.whatsapp.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/web.whatsapp.com/privkey.pem;
-    
+
     location / {
         proxy_pass https://web.whatsapp.com;
         proxy_ssl_server_name on;
@@ -451,7 +496,7 @@ server {
 }
 EOF
 
-    # Ana nginx config (hafif)
+    # Create a main Nginx configuration file
     cat > /etc/nginx/nginx.conf << 'EOF'
 user www-data;
 worker_processes auto;
@@ -467,14 +512,14 @@ events {
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
-    
+
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                    '$status $body_bytes_sent "$http_referer" '
                    '"$http_user_agent" "$http_x_forwarded_for"';
-    
+
     access_log /var/log/nginx/access.log main;
     error_log /var/log/nginx/error.log warn;
-    
+
     sendfile on;
     tcp_nopush on;
     tcp_nodelay on;
@@ -482,57 +527,63 @@ http {
     keepalive_requests 100;
     types_hash_max_size 2048;
     server_tokens off;
-    
-    # Gzip sıkıştırma
+
+    # Gzip compression
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
-    
+
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;
 }
 EOF
 
-    # Test domainleri için SSL (self-signed)
+    # Generate self-signed SSL certificates for the proxy domains
     mkdir -p /etc/letsencrypt/live/whatsapp.com
     mkdir -p /etc/letsencrypt/live/web.whatsapp.com
-    
+
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/letsencrypt/live/whatsapp.com/privkey.pem \
         -out /etc/letsencrypt/live/whatsapp.com/fullchain.pem \
         -subj "/CN=whatsapp.com"
-    
+
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/letsencrypt/live/web.whatsapp.com/privkey.pem \
         -out /etc/letsencrypt/live/web.whatsapp.com/fullchain.pem \
         -subj "/CN=web.whatsapp.com"
 
-    # Nginx'i başlat
+    # Start and enable Nginx
     systemctl start nginx
     systemctl enable nginx
 
-    print_success "Nginx ve SNI optimizasyonu tamamlandı"
+    print_success "Nginx and SNI proxy setup complete."
 }
 
-# Güvenlik ayarları
+#
+# Configures system security features.
+# This function sets up the UFW firewall to block all incoming traffic
+# by default, allowing only essential ports. It also configures Fail2ban
+# to protect SSH and Nginx from brute-force attacks and applies kernel
+# hardening settings via sysctl.
+#
 setup_security() {
-    print_status "[8/13] Güvenlik ayarları yapılandırılıyor..."
+    print_status "[8/13] Configuring security settings..."
 
-    # Firewall kuralları (UFW)
+    # Configure UFW firewall rules
     ufw --force reset
     ufw default deny incoming
     ufw default allow outgoing
     ufw allow ssh
     ufw allow 22/tcp comment 'SSH'
     ufw allow 443/tcp comment 'HTTPS/SSH-VPN'
-    ufw allow 443/udp comment 'HTTPS/SSH-VPN'
+    ufw allow 443/udp comment 'QUIC/H3'
     ufw allow 51820/udp comment 'WireGuard'
     ufw allow 1194/udp comment 'OpenVPN'
     ufw allow 80/tcp comment 'HTTP'
     ufw --force enable
 
-    # Fail2ban yapılandırması
+    # Configure Fail2ban
     cat > /etc/fail2ban/jail.local << 'EOF'
 [sshd]
 enabled = true
@@ -556,7 +607,7 @@ EOF
     systemctl restart fail2ban
     systemctl enable fail2ban
 
-    # Kernel güvenlik ayarları
+    # Apply kernel security settings
     cat > /etc/sysctl.d/99-security.conf << 'EOF'
 # Kernel security hardening
 net.ipv4.conf.all.rp_filter=1
@@ -578,14 +629,18 @@ EOF
 
     sysctl -p /etc/sysctl.d/99-security.conf
 
-    print_success "Güvenlik ayarları tamamlandı"
+    print_success "Security settings configured."
 }
 
-# Performans optimizasyonu
+#
+# Applies performance optimizations to the system.
+# This function tunes network-related kernel parameters for high performance
+# and enables TCP BBR congestion control for better throughput and lower latency.
+#
 optimize_performance() {
-    print_status "[9/13] Performans optimizasyonu yapılıyor..."
+    print_status "[9/13] Applying performance optimizations..."
 
-    # Kernel parametreleri
+    # Tune kernel parameters for network performance
     cat > /etc/sysctl.d/99-performance.conf << 'EOF'
 # Network performance optimization
 net.core.rmem_max=67108864
@@ -613,21 +668,26 @@ EOF
 
     sysctl -p /etc/sysctl.d/99-performance.conf
 
-    # TCP BBR aktivasyonu
+    # Ensure BBR is set as the default congestion control
     echo "net.ipv4.tcp_congestion_control = bbr" >> /etc/sysctl.conf
     sysctl -p
 
-    print_success "Performans optimizasyonu tamamlandı"
+    print_success "Performance optimizations applied."
 }
 
-# Monitoring kurulumu (hafif)
+#
+# Sets up monitoring tools.
+# This function installs Netdata for real-time monitoring and creates a
+# simple `vpn-monitor` script for a quick command-line status check.
+# A cron job is also added to log the monitor's output every 5 minutes.
+#
 setup_monitoring() {
-    print_status "[10/13] Monitoring sistemleri kuruluyor..."
-    
-    # Netdata kurulumu (hafif)
+    print_status "[10/13] Setting up monitoring systems..."
+
+    # Install Netdata
     bash <(curl -Ss https://my-netdata.io/kickstart.sh) --non-interactive --stable-channel --disable-telemetry
-    
-    # Netdata için hafif ayarlar
+
+    # Apply a lightweight configuration to Netdata
     cat > /etc/netdata/netdata.conf << 'EOF'
 [global]
     memory mode = dbengine
@@ -641,63 +701,65 @@ EOF
 
     systemctl restart netdata
 
-    # Basit monitoring scripti
+    # Create a simple monitoring script
     cat > /usr/local/bin/vpn-monitor << 'EOF'
 #!/bin/bash
-echo "=== VPN Server Monitoring ==="
-echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}')%"
+echo "=== VPN Server Monitor ==="
+echo "CPU Usage:    $(top -bn1 | grep "Cpu(s)" | awk '{print $2}')%"
 echo "Memory Usage: $(free -m | awk '/Mem:/ {printf "%.1f%%", $3/$2*100}')"
-echo "Disk Usage: $(df -h / | awk 'NR==2 {print $5}')"
-echo "Swap Usage: $(free -m | awk '/Swap:/ {if ($2>0) printf "%.1f%%", $3/$2*100; else print "N/A"}')"
-echo "Active Connections: $(netstat -an | grep -c ESTABLISHED)"
-echo "Docker Containers: $(docker ps -q | wc -l)"
-echo "Uptime: $(uptime -p)"
+echo "Disk Usage:   $(df -h / | awk 'NR==2 {print $5}')"
+echo "Swap Usage:   $(free -m | awk '/Swap:/ {if ($2>0) printf "%.1f%%", $3/$2*100; else print "N/A"}')"
+echo "Connections:  $(netstat -an | grep -c ESTABLISHED)"
+echo "Docker PS:    $(docker ps -q | wc -l) running"
+echo "Uptime:       $(uptime -p)"
 EOF
 
     chmod +x /usr/local/bin/vpn-monitor
 
-    # Monitoring cron job (idempotent)
+    # Add a cron job for the monitor script (ensuring no duplicates)
     MONITOR_JOB="*/5 * * * * /usr/local/bin/vpn-monitor >> /var/log/vpn-monitor.log"
     CRON_CONTENT=$(crontab -l 2>/dev/null)
     if ! echo "$CRON_CONTENT" | grep -Fq "$MONITOR_JOB"; then
-        # Safely append the new job and pipe to crontab.
-        # Using printf is safer than echo for multi-line variables.
         printf "%s\n%s\n" "$CRON_CONTENT" "$MONITOR_JOB" | crontab -
     fi
 
-    print_success "Monitoring sistemleri kuruldu"
+    print_success "Monitoring systems installed."
 }
 
-# Yedekleme sistemi
+#
+# Sets up an automated backup system.
+# This function creates a script at `/opt/backup-scripts/backup-vpn.sh`
+# that archives critical configuration files. A cron job is then created
+# to run this script daily. Backups older than 7 days are automatically deleted.
+#
 setup_backup() {
-    print_status "[11/13] Yedekleme sistemi kuruluyor..."
-    
-    # Yedekleme dizinleri
+    print_status "[11/13] Setting up backup system..."
+
+    # Create backup directories
     mkdir -p /backup/{config,logs}
     mkdir -p /opt/backup-scripts
 
-    # Yedekleme scripti
+    # Create the backup script
     cat > /opt/backup-scripts/backup-vpn.sh << 'EOF'
 #!/bin/bash
-
-# VPN Backup Script
+# This script backs up critical VPN and server configuration files.
 BACKUP_DIR="/backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RETENTION_DAYS=7
 
-# Config yedekleme
+# Backup configuration files
 tar -czf $BACKUP_DIR/config/vpn_config_$TIMESTAMP.tar.gz \
     /etc/wireguard \
     /etc/openvpn \
     /etc/nginx \
     /etc/ssh 2>/dev/null
 
-# Log yedekleme
+# Backup log files
 tar -czf $BACKUP_DIR/logs/system_logs_$TIMESTAMP.tar.gz \
     /var/log/nginx \
     /var/log/auth.log 2>/dev/null
 
-# Eski yedekleri temizle
+# Clean up old backups
 find $BACKUP_DIR -name "*.tar.gz" -mtime +$RETENTION_DAYS -delete
 
 echo "Backup completed: $TIMESTAMP"
@@ -705,96 +767,111 @@ EOF
 
     chmod +x /opt/backup-scripts/backup-vpn.sh
 
-    # Günlük yedekleme cron job'u (idempotent)
+    # Add a daily cron job for backups (ensuring no duplicates)
     BACKUP_JOB="0 2 * * * /opt/backup-scripts/backup-vpn.sh >> /var/log/backup.log"
     CRON_CONTENT=$(crontab -l 2>/dev/null)
     if ! echo "$CRON_CONTENT" | grep -Fq "$BACKUP_JOB"; then
-        # Safely append the new job and pipe to crontab.
         printf "%s\n%s\n" "$CRON_CONTENT" "$BACKUP_JOB" | crontab -
     fi
 
-    print_success "Yedekleme sistemi kuruldu"
+    print_success "Backup system installed."
 }
 
-# Final test ve raporlama
+#
+# Performs final checks and generates a report.
+# This function verifies that all key services are active and that the
+# Docker containers are running. It then prints a summary of network
+# connection points and resource usage.
+#
 final_test() {
-    print_status "[12/13] Final testleri yapılıyor..."
+    print_status "[12/13] Performing final checks..."
 
-    # Servis durumlarını kontrol et
+    # Check status of key services
     SERVICES=("docker" "nginx" "fail2ban" "netdata" "ssh")
     for service in "${SERVICES[@]}"; do
         if systemctl is-active --quiet $service; then
-            print_success "$service servisi çalışıyor"
+            print_success "$service service is running."
         else
-            print_warning "$service servisi çalışmıyor"
+            print_warning "$service service is not running."
         fi
     done
 
-    # Docker konteyner kontrolü
+    # Check Docker containers
     if docker ps > /dev/null 2>&1; then
-        print_success "Docker konteynerleri çalışıyor"
-        echo "Aktif konteynerler:"
+        print_success "Docker containers are running."
+        echo "Active containers:"
         docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     else
-        print_warning "Docker konteynerleri çalışmıyor"
+        print_warning "Could not query Docker containers."
     fi
 
-    # Ağ bağlantı testleri
-    echo "Ağ bağlantı noktaları:"
-    echo "SSH VPN: 22, 443/tcp, 443/udp"
-    echo "WireGuard: udp://$(curl -4 ifconfig.co):51820"
-    echo "OpenVPN: udp://$(curl -4 ifconfig.co):1194"
-    echo "HTTP/HTTPS: 80/tcp, 443/tcp"
-    
-    # Kaynak kullanımı
-    echo "Kaynak kullanımı:"
+    # Display network connection info
+    echo "Network endpoints:"
+    echo "  SSH VPN:     22/tcp, 443/tcp"
+    echo "  WireGuard:   udp://$(curl -4s ifconfig.co):51820"
+    echo "  OpenVPN:     udp://$(curl -4s ifconfig.co):1194"
+    echo "  HTTP/HTTPS:  80/tcp, 443/tcp"
+
+    # Display resource usage
+    echo "Resource usage:"
     free -h
     df -h /
-    
-    print_success "Final testleri tamamlandı"
+
+    print_success "Final checks complete."
 }
 
-# Kurulum sonu bilgilendirme
+#
+# Displays a summary of the installation.
+# This function prints out all the necessary information for the user
+# to access and manage the newly configured server, including IP address,
+# connection commands, and URLs for web interfaces.
+#
 show_info() {
-    print_status "[13/13] Kurulum tamamlandı! Bilgiler:"
+    print_status "[13/13] Installation complete! See details below."
+
+    PUBLIC_IP=$(curl -4s ifconfig.co)
+    USERNAME=$(whoami)
 
     echo ""
-    echo "=== ULTIMATE VPN SERVER KURULUM BİLGİLERİ ==="
-    echo "Sunucu IP: $(curl -4 ifconfig.co)"
-    echo "SSH Bağlantı: ssh -p 22 $(whoami)@$(curl -4 ifconfig.co)"
-    echo "SSH VPN Bağlantı: ssh -p 443 -D 1080 $(whoami)@$(curl -4 ifconfig.co)"
-    echo "WireGuard Admin: http://$(curl -4 ifconfig.co):51821"
-    echo "Netdata Monitoring: http://$(curl -4 ifconfig.co):19999"
-    echo "Swap Alanı: $(free -h | awk '/Swap:/ {print $2}')"
-    echo "=============================================="
+    echo "=== ULTIMATE SERVER SETUP SUMMARY ==="
+    echo "Server IP: $PUBLIC_IP"
+    echo "SSH Login: ssh -p 22 $USERNAME@$PUBLIC_IP"
+    echo "SSH VPN Tunnel: ssh -p 443 -D 1080 $USERNAME@$PUBLIC_IP"
+    echo "WireGuard Admin UI: http://$PUBLIC_IP:51821"
+    echo "Netdata Monitor: http://$PUBLIC_IP:19999"
+    echo "Swap Space: $(free -h | awk '/Swap:/ {print $2}')"
+    echo "======================================="
     echo ""
-    echo "Önemli Komutlar:"
-    echo "  Sistem durumu: vpn-monitor"
-    echo "  Servis restart: systemctl restart docker nginx ssh"
-    echo "  Logları görüntüle: tail -f /var/log/syslog"
-    echo "  Yedekleme: /opt/backup-scripts/backup-vpn.sh"
+    echo "Important Commands:"
+    echo "  Check server status:  vpn-monitor"
+    echo "  Manage services:      systemctl restart docker nginx ssh"
+    echo "  View system logs:     tail -f /var/log/syslog"
+    echo "  Run a manual backup:  /opt/backup-scripts/backup-vpn.sh"
     echo ""
-    echo "WhatsApp SNI Optimizasyonu:"
-    echo "  WhatsApp trafiği otomatik olarak optimize edilmiştir"
-    echo "  SNI: whatsapp.com, web.whatsapp.com"
+    echo "SNI Proxy Note:"
+    echo "  Nginx is configured to proxy traffic for whatsapp.com."
     echo ""
 }
 
-# Ana kurulum fonksiyonu
+#
+# Main function to run the installation process.
+# This function executes all the setup steps in the correct order.
+# It also performs a root check before starting.
+#
 main() {
-    echo "=== Ultimate VDS/VPN/SSH Kurulum Scripti ==="
-    echo "Hedef Seviye: $TARGET_LEVEL"
-    echo "Özel Hassas Hostlar: $SENSITIVE_HOSTS"
-    echo "Sistem: 2GB RAM + 4GB Swap Optimize"
-    echo "============================================"
+    echo "=== Ultimate Server Setup Script ==="
+    echo "Target Level: $TARGET_LEVEL"
+    echo "Sensitive Hosts for SNI: $SENSITIVE_HOSTS"
+    echo "System Profile: 2GB RAM + 4GB Swap Optimized"
+    echo "=========================================="
 
-    # Root kontrolü
+    # Ensure script is run as root
     if [ "$EUID" -ne 0 ]; then
-        print_error "Lütfen root olarak çalıştırın: sudo $0"
+        print_error "Please run this script as root: sudo $0"
         exit 1
     fi
 
-    # Kurulum adımlarını çalıştır
+    # Execute setup functions
     setup_swap
     check_system
     install_dependencies
@@ -809,10 +886,10 @@ main() {
     final_test
     show_info
 
-    echo "============================================"
-    print_success "Kurulum tamamlandı! Ultimate VPN Server hazır."
-    echo "============================================"
+    echo "=========================================="
+    print_success "Setup complete! Your Ultimate Server is ready."
+    echo "=========================================="
 }
 
-# Scripti çalıştır
+# --- Execute Script ---
 main "$@"
