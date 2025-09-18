@@ -894,6 +894,42 @@ setup_control_panel() {
 
     # Create the main index.php file for the control panel
     cat > /var/www/html/panel/index.php << 'EOF'
+<?php
+// Helper function to get SSH users
+function get_ssh_users() {
+    $users = [];
+    $group_info = file_get_contents('/etc/group');
+    if (preg_match('/^ssh-users:x:\d+:(.*)$/m', $group_info, $matches)) {
+        if (!empty($matches[1])) {
+            $users = explode(',', $matches[1]);
+        }
+    }
+    return $users;
+}
+
+// Helper function to get SNI domains
+function get_sni_domains() {
+    $domains = [];
+    $config_files = glob('/etc/nginx/sni.d/*.conf');
+    foreach ($config_files as $file) {
+        $domains[] = basename($file, '.conf');
+    }
+    return $domains;
+}
+
+$ssh_users = get_ssh_users();
+$sni_domains = get_sni_domains();
+
+$payload = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_payload') {
+    $host_domain = htmlspecialchars($_POST['host_domain']);
+    $sni_domain = htmlspecialchars($_POST['sni_domain']);
+    $ssh_user = htmlspecialchars($_POST['ssh_user']); // Not used in payload, but good to have
+
+    $crlf = "\\r\\n";
+    $payload = "CONNECT {$host_domain}:443 HTTP/1.1{$crlf}Host: {$sni_domain}{$crlf}Connection: Keep-Alive{$crlf}{$crlf}";
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -936,8 +972,35 @@ setup_control_panel() {
             <form action="sni.php" method="post">
                 <input type="text" name="domain" placeholder="Domain (e.g., example.com)" required>
                 <button type="submit" name="action" value="add">Add Domain</button>
-                <button type="submit" name="action" value="remove">Remove Domain</button>
+                <button type="submit" name="action" value="remove" class="remove">Remove Domain</button>
             </form>
+        </div>
+
+        <!-- Payload Generator Section -->
+        <div class="section">
+            <h2>Payload Generator</h2>
+            <form method="post" action="index.php#payload">
+                <input type="text" name="host_domain" placeholder="Your SSH domain (e.g., ssh.yourdomain.com)" required>
+                <select name="ssh_user" required>
+                    <option value="" disabled selected>Select SSH User</option>
+                    <?php foreach ($ssh_users as $user): ?>
+                        <option value="<?php echo htmlspecialchars($user); ?>"><?php echo htmlspecialchars($user); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select name="sni_domain" required>
+                    <option value="" disabled selected>Select SNI Domain</option>
+                    <?php foreach ($sni_domains as $domain): ?>
+                        <option value="<?php echo htmlspecialchars($domain); ?>"><?php echo htmlspecialchars($domain); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" name="action" value="generate_payload">Generate Payload</button>
+            </form>
+            <?php if (!empty($payload)): ?>
+            <div id="payload">
+                <h3>Generated Payload:</h3>
+                <textarea readonly><?php echo $payload; ?></textarea>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 </body>
@@ -1008,6 +1071,25 @@ button[value="remove"] {
     border-radius: 4px;
     border-left: 5px solid #2d6a4f;
     margin-bottom: 20px;
+}
+
+select, textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    background-color: #fff;
+    font-family: inherit;
+    font-size: 1em;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 100px;
+    background-color: #ecf0f1;
+    font-family: monospace;
+    white-space: pre;
 }
 EOF
 
