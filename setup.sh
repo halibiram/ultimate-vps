@@ -27,6 +27,15 @@ TARGET_LEVEL="ULTIMATE"
 SERVICE_TYPE="SERVER/VPN/SSH"
 SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.org,facebook.com,instagram.com,twitter.com"
 
+# --- Control Panel Credentials ---
+# The username for the control panel is 'admin'.
+# The password will be set during the installation.
+PANEL_USER="admin"
+
+# --- WireGuard Configuration ---
+# Set the password for the wg-easy web UI.
+WG_PASS="wireguard_password"
+
 # --- Color Codes for Output ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -82,6 +91,21 @@ print_warning() {
 #
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+#
+# Fetches the public IP address from multiple sources for reliability.
+#
+get_public_ip() {
+    IP=$(curl -4s https://icanhazip.com)
+    if [ -z "$IP" ]; then
+        IP=$(curl -4s https://ifconfig.me)
+    fi
+    if [ -z "$IP" ]; then
+        print_error "Failed to retrieve public IP address."
+        exit 1
+    fi
+    echo $IP
 }
 
 
@@ -193,7 +217,7 @@ install_dependencies() {
         gnupg lsb-release jq htop iftop zip unzip nano vim resolvconf \
         dnsutils iputils-ping traceroute mtr-tiny tcpdump socat netcat \
         openssh-server openssh-client rsync cron logrotate sysstat \
-        iotop ethtool
+        iotop ethtool php-fpm apache2-utils
 
     # Install Python packages
     pip3 install --upgrade pip
@@ -315,8 +339,12 @@ AllowStreamLocalForwarding yes
 PermitTunnel yes
 ClientAliveInterval 30
 ClientAliveCountMax 3
-AllowUsers $USER
+AllowGroups ssh-users
 EOF
+
+    # Create the ssh-users group and add the primary user to it
+    groupadd --force ssh-users
+    usermod -aG ssh-users $USER
 
     # Generate SSH key if it doesn't exist
     if [ ! -f ~/.ssh/id_rsa ]; then
@@ -339,7 +367,7 @@ case "$1" in
         iptables -A INPUT -p udp --dport 443 -j ACCEPT
         echo "SSH VPN ready. Connection info:"
         echo "SSH Ports: 22, 443"
-        echo "IP: $(curl -4s ifconfig.co)"
+        echo "IP: $(get_public_ip)"
         ;;
     stop)
         echo "Stopping SSH VPN service..."
@@ -398,8 +426,8 @@ setup_vpn_containers() {
     # Deploy WireGuard (wg-easy) container
     docker run -d \
       --name=wg-easy \
-      -e WG_HOST=$(curl -4s ifconfig.co) \
-      -e PASSWORD=$(openssl rand -base64 12) \
+      -e WG_HOST=$(get_public_ip) \
+      -e PASSWORD="$WG_PASS" \
       -e WG_PORT=51820 \
       -e WG_DEFAULT_ADDRESS=10.8.0.x \
       -e WG_DEFAULT_DNS=1.1.1.1 \
@@ -447,53 +475,57 @@ setup_nginx_sni() {
     apt-get install -y nginx nginx-extras
 
     # Create directories for custom configs
-    mkdir -p /etc/nginx/snippets
+    mkdir -p /etc/nginx/sni.d
     mkdir -p /etc/nginx/ssl
 
-    # Create SNI proxy configuration for specific hosts
-    cat > /etc/nginx/snippets/sni_optimization.conf << 'EOF'
-# SNI proxy for WhatsApp
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name whatsapp.com www.whatsapp.com;
+    # Create the users.php file for SSH user management
+    cat > /var/www/html/panel/users.php << 'EOF'
+<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = escapeshellarg($_POST['username']);
+    $action = $_POST['action'];
 
-    ssl_certificate /etc/letsencrypt/live/whatsapp.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/whatsapp.com/privkey.pem;
-
-    # SSL Optimizations
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-
-    location / {
-        proxy_pass https://www.whatsapp.com;
-        proxy_ssl_server_name on;
-        proxy_ssl_name $host;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_connect_timeout 30s;
-        proxy_send_timeout 30s;
-        proxy_read_timeout 30s;
+    if ($action === 'add') {
+        $ssh_key = escapeshellarg($_POST['ssh_key']);
+        if (empty(trim($ssh_key, "'"))) {
+            $message = "Error: Public SSH key is required to add a user.";
+        } else {
+            $output = shell_exec("sudo /usr/local/bin/panel-user-add {$username} {$ssh_key}");
+            $message = "User {$username} added successfully.";
+        }
+    } elseif ($action === 'remove') {
+        $output = shell_exec("sudo /usr/local/bin/panel-user-del {$username}");
+        $message = "User {$username} removed successfully.";
     }
+
+    // Redirect back to the main page with a message
+    header("Location: index.php?message=" . urlencode($message));
+    exit;
 }
+?>
+EOF
 
-# SNI proxy for other sensitive hosts
-server {
-    listen 443 ssl http2;
-    server_name web.whatsapp.com;
+    # Create the sni.php file for SNI proxy management
+    cat > /var/www/html/panel/sni.php << 'EOF'
+<?php
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $domain = escapeshellarg($_POST['domain']);
+    $action = $_POST['action'];
+    $config_path = "/etc/nginx/sni.d/{$domain}.conf";
 
-    ssl_certificate /etc/letsencrypt/live/web.whatsapp.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/web.whatsapp.com/privkey.pem;
-
-    location / {
-        proxy_pass https://web.whatsapp.com;
-        proxy_ssl_server_name on;
-        proxy_set_header Host web.whatsapp.com;
+    if ($action === 'add') {
+        shell_exec("sudo /usr/local/bin/panel-sni-add {$domain}");
+        $message = "Domain {$domain} added to SNI proxy.";
+    } elseif ($action === 'remove') {
+        shell_exec("sudo /usr/local/bin/panel-sni-del {$domain}");
+        $message = "Domain {$domain} removed from SNI proxy.";
     }
+
+    // Redirect back to the main page
+    header("Location: index.php?message=" . urlencode($message));
+    exit;
 }
+?>
 EOF
 
     # Create a main Nginx configuration file
@@ -536,22 +568,11 @@ http {
 
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;
+    include /etc/nginx/sni.d/*.conf;
 }
 EOF
 
-    # Generate self-signed SSL certificates for the proxy domains
-    mkdir -p /etc/letsencrypt/live/whatsapp.com
-    mkdir -p /etc/letsencrypt/live/web.whatsapp.com
-
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/letsencrypt/live/whatsapp.com/privkey.pem \
-        -out /etc/letsencrypt/live/whatsapp.com/fullchain.pem \
-        -subj "/CN=whatsapp.com"
-
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/letsencrypt/live/web.whatsapp.com/privkey.pem \
-        -out /etc/letsencrypt/live/web.whatsapp.com/fullchain.pem \
-        -subj "/CN=web.whatsapp.com"
+    # SNI proxy domains can be added via the control panel.
 
     # Start and enable Nginx
     systemctl start nginx
@@ -808,8 +829,8 @@ final_test() {
     # Display network connection info
     echo "Network endpoints:"
     echo "  SSH VPN:     22/tcp, 443/tcp"
-    echo "  WireGuard:   udp://$(curl -4s ifconfig.co):51820"
-    echo "  OpenVPN:     udp://$(curl -4s ifconfig.co):1194"
+    echo "  WireGuard:   udp://$(get_public_ip):51820"
+    echo "  OpenVPN:     udp://$(get_public_ip):1194"
     echo "  HTTP/HTTPS:  80/tcp, 443/tcp"
 
     # Display resource usage
@@ -829,7 +850,7 @@ final_test() {
 show_info() {
     print_status "[13/13] Installation complete! See details below."
 
-    PUBLIC_IP=$(curl -4s ifconfig.co)
+    PUBLIC_IP=$(get_public_ip)
     USERNAME=$(whoami)
 
     echo ""
@@ -837,7 +858,14 @@ show_info() {
     echo "Server IP: $PUBLIC_IP"
     echo "SSH Login: ssh -p 22 $USERNAME@$PUBLIC_IP"
     echo "SSH VPN Tunnel: ssh -p 443 -D 1080 $USERNAME@$PUBLIC_IP"
-    echo "WireGuard Admin UI: http://$PUBLIC_IP:51821"
+    echo "--- Web Control Panel (for managing users & SNI) ---"
+    echo "URL: http://$PUBLIC_IP:8080"
+    echo "User: $PANEL_USER"
+    echo "Password: [The password you set during installation]"
+    echo ""
+    echo "--- WireGuard UI (for managing VPN clients) ---"
+    echo "URL: http://$PUBLIC_IP:51821 (also linked from Control Panel)"
+    echo "Password: $WG_PASS"
     echo "Netdata Monitor: http://$PUBLIC_IP:19999"
     echo "Swap Space: $(free -h | awk '/Swap:/ {print $2}')"
     echo "======================================="
@@ -852,6 +880,343 @@ show_info() {
     echo "  Nginx is configured to proxy traffic for whatsapp.com."
     echo ""
 }
+
+#
+# Sets up the web-based control panel.
+# This function creates a new Nginx site to host the PHP-based control
+# panel. It also configures Nginx to process PHP files using PHP-FPM.
+#
+setup_control_panel() {
+    print_status "[NEW] Setting up control panel..."
+
+    # Create web directory for the panel
+    mkdir -p /var/www/html/panel
+
+    # Create the main index.php file for the control panel
+    cat > /var/www/html/panel/index.php << 'EOF'
+<?php
+// Helper function to get SSH users
+function get_ssh_users() {
+    $users = [];
+    $group_info = file_get_contents('/etc/group');
+    if (preg_match('/^ssh-users:x:\d+:(.*)$/m', $group_info, $matches)) {
+        if (!empty($matches[1])) {
+            $users = explode(',', $matches[1]);
+        }
+    }
+    return $users;
+}
+
+// Helper function to get SNI domains
+function get_sni_domains() {
+    $domains = [];
+    $config_files = glob('/etc/nginx/sni.d/*.conf');
+    foreach ($config_files as $file) {
+        $domains[] = basename($file, '.conf');
+    }
+    return $domains;
+}
+
+$ssh_users = get_ssh_users();
+$sni_domains = get_sni_domains();
+
+$payload = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'generate_payload') {
+    $host_domain = htmlspecialchars($_POST['host_domain']);
+    $sni_domain = htmlspecialchars($_POST['sni_domain']);
+    $ssh_user = htmlspecialchars($_POST['ssh_user']); // Not used in payload, but good to have
+
+    $crlf = "\\r\\n";
+    $payload = "CONNECT {$host_domain}:443 HTTP/1.1{$crlf}Host: {$sni_domain}{$crlf}Connection: Keep-Alive{$crlf}{$crlf}";
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Control Panel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Ultimate Server Control Panel</h1>
+
+        <?php
+        if (isset($_GET['message'])) {
+            echo "<p class='message'>" . htmlspecialchars($_GET['message']) . "</p>";
+        }
+        ?>
+
+        <!-- WireGuard Section -->
+        <div class="section">
+            <h2>WireGuard Management</h2>
+            <p>Access the WireGuard web UI to manage clients.</p>
+            <a href="http://<?php echo $_SERVER['SERVER_ADDR']; ?>:51821" target="_blank" class="button">Open WireGuard UI</a>
+        </div>
+
+        <!-- SSH User Management Section -->
+        <div class="section">
+            <h2>SSH User Management</h2>
+            <form action="users.php" method="post" class="user-form">
+                <input type="text" name="username" placeholder="Username" pattern="[a-z_][a-z0-9_-]{0,30}" title="Enter a valid Linux username." required>
+                <textarea name="ssh_key" placeholder="Paste public SSH key here (required for adding user)"></textarea>
+                <button type="submit" name="action" value="add">Add User</button>
+                <button type="submit" name="action" value="remove" class="remove">Remove User</button>
+            </form>
+        </div>
+
+        <!-- SNI Proxy Management Section -->
+        <div class="section">
+            <h2>SNI Proxy Management</h2>
+            <form action="sni.php" method="post">
+                <input type="text" name="domain" placeholder="Domain (e.g., example.com)" required>
+                <button type="submit" name="action" value="add">Add Domain</button>
+                <button type="submit" name="action" value="remove" class="remove">Remove Domain</button>
+            </form>
+        </div>
+
+        <!-- Payload Generator Section -->
+        <div class="section">
+            <h2>Payload Generator</h2>
+            <form method="post" action="index.php#payload">
+                <input type="text" name="host_domain" placeholder="Your SSH domain (e.g., ssh.yourdomain.com)" required>
+                <select name="ssh_user" required>
+                    <option value="" disabled selected>Select SSH User</option>
+                    <?php foreach ($ssh_users as $user): ?>
+                        <option value="<?php echo htmlspecialchars($user); ?>"><?php echo htmlspecialchars($user); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select name="sni_domain" required>
+                    <option value="" disabled selected>Select SNI Domain</option>
+                    <?php foreach ($sni_domains as $domain): ?>
+                        <option value="<?php echo htmlspecialchars($domain); ?>"><?php echo htmlspecialchars($domain); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" name="action" value="generate_payload">Generate Payload</button>
+            </form>
+            <?php if (!empty($payload)): ?>
+            <div id="payload">
+                <h3>Generated Payload:</h3>
+                <textarea readonly><?php echo $payload; ?></textarea>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+
+    # Create the CSS file for styling
+    cat > /var/www/html/panel/style.css << 'EOF'
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f4f7f9;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+h1, h2 {
+    color: #2c3e50;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 10px;
+}
+
+.section {
+    margin-bottom: 20px;
+}
+
+p {
+    line-height: 1.6;
+}
+
+input[type="text"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.button, button {
+    display: inline-block;
+    background-color: #3498db;
+    color: #fff;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+button[value="remove"] {
+    background-color: #e74c3c;
+}
+
+.message {
+    background-color: #eafaf1;
+    color: #2d6a4f;
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 5px solid #2d6a4f;
+    margin-bottom: 20px;
+}
+
+select, textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    background-color: #fff;
+    font-family: inherit;
+    font-size: 1em;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 100px;
+    background-color: #ecf0f1;
+    font-family: monospace;
+    white-space: pre;
+}
+EOF
+
+    # Interactively set the control panel password
+    while true; do
+        read -sp "Enter a password for the control panel admin user: " PANEL_PASS
+        echo
+        read -sp "Confirm password: " PANEL_PASS_CONFIRM
+        echo
+        if [ "$PANEL_PASS" = "$PANEL_PASS_CONFIRM" ] && [ -n "$PANEL_PASS" ]; then
+            break
+        else
+            print_error "Passwords do not match or are empty. Please try again."
+        fi
+    done
+
+    # Create .htpasswd file for basic authentication
+    htpasswd -cb /etc/nginx/.htpasswd "$PANEL_USER" "$PANEL_PASS"
+
+    # Find the PHP-FPM socket path dynamically
+    PHP_FPM_SOCK=$(find /var/run/php -name "php*-fpm.sock" | head -n 1)
+    if [ -z "$PHP_FPM_SOCK" ]; then
+        print_error "Could not find PHP-FPM socket."
+        exit 1
+    fi
+    print_status "Using PHP-FPM socket at $PHP_FPM_SOCK"
+
+    # Create Nginx config for the control panel
+    cat > /etc/nginx/sites-available/control-panel << EOF
+server {
+    listen 8080;
+    server_name _;
+
+    root /var/www/html/panel;
+    index index.php index.html;
+
+    # Add Basic Authentication
+    auth_basic "Restricted Content";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:$PHP_FPM_SOCK;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOF
+
+    # Enable the site
+    ln -s /etc/nginx/sites-available/control-panel /etc/nginx/sites-enabled/
+
+    # Create user management wrapper scripts
+    cat > /usr/local/bin/panel-user-add << 'EOF'
+#!/bin/bash
+if [ "$#" -ne 2 ]; then exit 1; fi
+USERNAME=$1
+PUBKEY=$2
+useradd -m -s /bin/bash -G ssh-users "$USERNAME"
+mkdir -p "/home/$USERNAME/.ssh"
+echo "$PUBKEY" > "/home/$USERNAME/.ssh/authorized_keys"
+chmod 700 "/home/$USERNAME/.ssh"
+chmod 600 "/home/$USERNAME/.ssh/authorized_keys"
+chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.ssh"
+EOF
+
+    cat > /usr/local/bin/panel-user-del << 'EOF'
+#!/bin/bash
+if [ "$#" -ne 1 ]; then exit 1; fi
+USERNAME=$1
+userdel -r "$USERNAME"
+EOF
+
+    chmod +x /usr/local/bin/panel-user-add
+    chmod +x /usr/local/bin/panel-user-del
+
+    # Create SNI management wrapper scripts
+    cat > /usr/local/bin/panel-sni-add << 'EOF'
+#!/bin/bash
+if [ "$#" -ne 1 ]; then exit 1; fi
+DOMAIN=$1
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout "/etc/nginx/ssl/$DOMAIN.key" -out "/etc/nginx/ssl/$DOMAIN.crt" -subj "/CN=$DOMAIN"
+cat > "/etc/nginx/sni.d/$DOMAIN.conf" << EOL
+server {
+    listen 443 ssl http2;
+    server_name $DOMAIN;
+    ssl_certificate /etc/nginx/ssl/$DOMAIN.crt;
+    ssl_certificate_key /etc/nginx/ssl/$DOMAIN.key;
+    location / {
+        proxy_pass https://\$DOMAIN;
+        proxy_ssl_server_name on;
+        proxy_set_header Host \$DOMAIN;
+    }
+}
+EOL
+nginx -s reload
+EOF
+
+    cat > /usr/local/bin/panel-sni-del << 'EOF'
+#!/bin/bash
+if [ "$#" -ne 1 ]; then exit 1; fi
+DOMAIN=$1
+rm -f "/etc/nginx/sni.d/$DOMAIN.conf"
+rm -f "/etc/nginx/ssl/$DOMAIN.key"
+rm -f "/etc/nginx/ssl/$DOMAIN.crt"
+nginx -s reload
+EOF
+
+    chmod +x /usr/local/bin/panel-sni-add
+    chmod +x /usr/local/bin/panel-sni-del
+
+    # Configure sudoers for the control panel to use wrapper scripts
+    echo "www-data ALL=(ALL) NOPASSWD: /usr/local/bin/panel-user-add, /usr/local/bin/panel-user-del, /usr/local/bin/panel-sni-add, /usr/local/bin/panel-sni-del" > /etc/sudoers.d/panel-control
+    chmod 0440 /etc/sudoers.d/panel-control
+
+    # Test Nginx configuration and restart
+    nginx -t && systemctl restart nginx
+
+    print_success "Control panel Nginx site configured."
+}
+
 
 #
 # Main function to run the installation process.
@@ -879,6 +1244,7 @@ main() {
     setup_ssh_vpn
     setup_vpn_containers
     setup_nginx_sni
+    setup_control_panel
     setup_security
     optimize_performance
     setup_monitoring
