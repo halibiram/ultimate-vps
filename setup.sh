@@ -33,8 +33,7 @@ SENSITIVE_HOSTS="whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.
 PANEL_USER="admin"
 
 # --- WireGuard Configuration ---
-# Set the password for the wg-easy web UI.
-WG_PASS="wireguard_password"
+# The password for the wg-easy web UI will be set during installation.
 
 # --- Color Codes for Output ---
 RED='\033[0;31m'
@@ -423,6 +422,19 @@ setup_vpn_containers() {
     mkdir -p /etc/wireguard
     mkdir -p /etc/openvpn
 
+    # Interactively set the WireGuard UI password
+    while true; do
+        read -sp "Enter a password for the WireGuard web UI: " WG_PASS
+        echo
+        read -sp "Confirm password: " WG_PASS_CONFIRM
+        echo
+        if [ "$WG_PASS" = "$WG_PASS_CONFIRM" ] && [ -n "$WG_PASS" ]; then
+            break
+        else
+            print_error "Passwords do not match or are empty. Please try again."
+        fi
+    done
+
     # Deploy WireGuard (wg-easy) container
     docker run -d \
       --name=wg-easy \
@@ -602,6 +614,7 @@ setup_security() {
     ufw allow 51820/udp comment 'WireGuard'
     ufw allow 1194/udp comment 'OpenVPN'
     ufw allow 80/tcp comment 'HTTP'
+    ufw allow 8080/tcp comment 'Control Panel'
     ufw --force enable
 
     # Configure Fail2ban
@@ -861,11 +874,11 @@ show_info() {
     echo "--- Web Control Panel (for managing users & SNI) ---"
     echo "URL: http://$PUBLIC_IP:8080"
     echo "User: $PANEL_USER"
-    echo "Password: [The password you set during installation]"
+    echo "Password: [Set during installation]"
     echo ""
     echo "--- WireGuard UI (for managing VPN clients) ---"
     echo "URL: http://$PUBLIC_IP:51821 (also linked from Control Panel)"
-    echo "Password: $WG_PASS"
+    echo "Password: [Set during installation]"
     echo "Netdata Monitor: http://$PUBLIC_IP:19999"
     echo "Swap Space: $(free -h | awk '/Swap:/ {print $2}')"
     echo "======================================="
