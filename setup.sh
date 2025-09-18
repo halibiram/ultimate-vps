@@ -656,8 +656,14 @@ EOF
 
     chmod +x /usr/local/bin/vpn-monitor
 
-    # Monitoring cron job
-    echo "*/5 * * * * /usr/local/bin/vpn-monitor >> /var/log/vpn-monitor.log" | crontab -
+    # Monitoring cron job (idempotent)
+    MONITOR_JOB="*/5 * * * * /usr/local/bin/vpn-monitor >> /var/log/vpn-monitor.log"
+    CRON_CONTENT=$(crontab -l 2>/dev/null)
+    if ! echo "$CRON_CONTENT" | grep -Fq "$MONITOR_JOB"; then
+        # Safely append the new job and pipe to crontab.
+        # Using printf is safer than echo for multi-line variables.
+        printf "%s\n%s\n" "$CRON_CONTENT" "$MONITOR_JOB" | crontab -
+    fi
 
     print_success "Monitoring sistemleri kuruldu"
 }
@@ -699,8 +705,13 @@ EOF
 
     chmod +x /opt/backup-scripts/backup-vpn.sh
 
-    # Günlük yedekleme cron job'u
-    echo "0 2 * * * /opt/backup-scripts/backup-vpn.sh >> /var/log/backup.log" | crontab -
+    # Günlük yedekleme cron job'u (idempotent)
+    BACKUP_JOB="0 2 * * * /opt/backup-scripts/backup-vpn.sh >> /var/log/backup.log"
+    CRON_CONTENT=$(crontab -l 2>/dev/null)
+    if ! echo "$CRON_CONTENT" | grep -Fq "$BACKUP_JOB"; then
+        # Safely append the new job and pipe to crontab.
+        printf "%s\n%s\n" "$CRON_CONTENT" "$BACKUP_JOB" | crontab -
+    fi
 
     print_success "Yedekleme sistemi kuruldu"
 }
