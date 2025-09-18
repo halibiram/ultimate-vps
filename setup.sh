@@ -74,7 +74,7 @@ check_system() {
     
     # Minimum gereksinimler (2GB RAM için optimize edilmiş)
     MIN_RAM=1024  # 1GB minimum
-    MIN_DISK=20   # 20GB disk
+    MIN_DISK=10   # 10GB disk
     MIN_CORES=1   # 1 çekirdek
     OS_VERSION=$(lsb_release -rs)
     
