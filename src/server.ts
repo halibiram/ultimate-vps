@@ -10,15 +10,13 @@ import { authRoutes } from './routes/auth';
 import { sshRoutes } from './routes/ssh';
 import { statsRoutes } from './routes/stats';
 
-// Extend FastifyRequest to include the user payload from JWT
-declare module 'fastify' {
-  interface FastifyRequest {
+// Extend the JWT payload type
+declare module '@fastify/jwt' {
+  interface FastifyJWT {
     user: {
-      payload: {
-        id: number;
-        username: string;
-        isAdmin: boolean;
-      }
+      id: number;
+      username: string;
+      isAdmin: boolean;
     };
   }
 }

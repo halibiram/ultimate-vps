@@ -1,0 +1,6 @@
+
+> ultimate-vps@1.0.0 start
+> node dist/server.js
+
+{"level":30,"time":1758305352894,"pid":8869,"hostname":"devbox","msg":"Server listening at http://0.0.0.0:3000"}
+🚀 ULTIMATE VPS Server started on port 3000

@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, SSHAccount } from '@prisma/client';
 import { SSHService } from '../services/sshService';
 
 const prisma = new PrismaClient();
@@ -10,13 +10,13 @@ const sshService = new SSHService();
  */
 export async function getSshAccounts(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const accounts = await prisma.sshAccount.findMany({
+    const accounts = await prisma.sSHAccount.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
     // Enrich each account with the number of active connections
     const enrichedAccounts = await Promise.all(
-      accounts.map(async (account) => {
+      accounts.map(async (account: SSHAccount) => {
         const activeConnections = await sshService.getUserConnections(account.username);
         return { ...account, activeConnections };
       })
@@ -34,7 +34,7 @@ export async function getSshAccounts(request: FastifyRequest, reply: FastifyRepl
  */
 export async function createSshAccount(request: FastifyRequest, reply: FastifyReply) {
   const { username, password, expiryDate, maxLogin } = request.body as any;
-  const adminUser = (request.user as any).payload; // Decoded from JWT
+  const adminUser = request.user; // Decoded from JWT
 
   if (!username || !password || !expiryDate) {
     return reply.code(400).send({ message: 'Username, password, and expiry date are required.' });
@@ -49,7 +49,7 @@ export async function createSshAccount(request: FastifyRequest, reply: FastifyRe
     }
 
     // Step 2: If system user is created, create the database record
-    const newAccount = await prisma.sshAccount.create({
+    const newAccount = await prisma.sSHAccount.create({
       data: {
         username,
         password, // Note: Storing plain password for simplicity as per prompt's likely intent. In a real app, hash or encrypt this.
@@ -79,7 +79,7 @@ export async function createSshAccount(request: FastifyRequest, reply: FastifyRe
 export async function toggleSshAccount(request: FastifyRequest, reply: FastifyReply) {
     const { username } = request.params as any;
     try {
-        const account = await prisma.sshAccount.findUnique({ where: { username } });
+        const account = await prisma.sSHAccount.findUnique({ where: { username } });
         if (!account) {
             return reply.code(404).send({ message: 'Account not found.' });
         }
@@ -93,7 +93,7 @@ export async function toggleSshAccount(request: FastifyRequest, reply: FastifyRe
         }
 
         // If OS command is successful, update the database.
-        const updatedAccount = await prisma.sshAccount.update({
+        const updatedAccount = await prisma.sSHAccount.update({
             where: { username },
             data: { isActive: newStatus },
         });
@@ -112,7 +112,7 @@ export async function deleteSshAccount(request: FastifyRequest, reply: FastifyRe
     const { username } = request.params as any;
     try {
         // Step 1: Delete from the database first. If this fails, no harm is done to the OS.
-        await prisma.sshAccount.delete({ where: { username }});
+        await prisma.sSHAccount.delete({ where: { username }});
 
         // Step 2: If database deletion is successful, delete the system user.
         const userDeleted = await sshService.deleteSSHUser(username);
