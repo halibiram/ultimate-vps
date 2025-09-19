@@ -1,6 +1,6 @@
 # Ultimate VPS SSH Manager
 
-A web-based application to manage users and their SSH accounts on a Virtual Private Server (VPS). It provides a simple, modern interface to create, update, and monitor SSH accounts and view real-time server statistics.
+A web-based application to manage users and their SSH accounts on a Virtual Private Server (VPS). It provides a simple, modern interface to create, update, and monitor SSH accounts, manage Stunnel, and view real-time server statistics.
 
 The application is built with a **TypeScript** backend using **Fastify** and **Prisma**, and a vanilla **JavaScript** frontend.
 
@@ -13,6 +13,9 @@ The application is built with a **TypeScript** backend using **Fastify** and **P
     - **View:** See a list of all SSH accounts with their status and number of active connections.
     - **Toggle:** Activate or deactivate accounts, which locks or unlocks the system user.
     - **Delete:** Remove SSH accounts from both the database and the operating system.
+- **Stunnel Integration:**
+    - **Enable/Disable Stunnel:** Easily enable or disable Stunnel to wrap SSH connections in SSL, helping to bypass restrictive firewalls.
+    - **Status Check:** View the current status of the Stunnel service.
 - **Real-Time Server Monitoring:**
     - **System Stats:** View live CPU, RAM, and disk usage.
     - **Network Status:** Monitor active connections on key ports (e.g., SSH, Dropbear).
@@ -53,7 +56,8 @@ These instructions will get you a copy of the project up and running on your loc
 - [Node.js](https://nodejs.org/) (v16 or higher)
 - [npm](https://www.npmjs.com/)
 - [PostgreSQL](https://www.postgresql.org/)
-- `sudo` access for the user running the application, to manage system users.
+- [Stunnel](https://www.stunnel.org/) (v5 or higher) installed on the server.
+- `sudo` access for the user running the application, to manage system users and services.
 
 ### Installation
 
@@ -76,14 +80,25 @@ These instructions will get you a copy of the project up and running on your loc
       JWT_SECRET="your-super-secret-key"
       REDIS_URL="redis://localhost:6379"
       ```
+    - **Note:** The `JWT_SECRET` should be a long, random, and secret string.
 
 4.  **Run database migrations:**
     ```bash
     npx prisma migrate dev
     ```
 
-5.  **Configure `sudo` access (Production):**
-    For the application to manage system users, the user running the Node.js process needs passwordless `sudo` access for the `useradd`, `userdel`, and `usermod` commands. This can be configured by adding a file in `/etc/sudoers.d/`.
+5.  **Install Stunnel:**
+    The Stunnel feature requires `stunnel4` to be installed on the server. You can install it on Debian-based systems with:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install stunnel4
+    ```
+
+6.  **Configure `sudo` access (Production):**
+    For the application to manage system users and Stunnel, the user running the Node.js process needs passwordless `sudo` access for several commands. Create a file `/etc/sudoers.d/ultimate-vps` and add the following lines, replacing `your-node-user` with the actual user running the application:
+    ```
+    your-node-user ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /bin/systemctl, /usr/bin/openssl, /bin/tee, /usr/bin/sed
+    ```
 
 ## Usage
 
@@ -132,6 +147,20 @@ All API endpoints are prefixed with `/api`.
 | :----- | :------- | :------------------------------------------------ | :------------- |
 | `GET`  | `/server`  | Retrieves real-time server stats (CPU, RAM, Disk). | Required       |
 | `GET`  | `/ports`   | Retrieves the status of monitored network ports.  | Required       |
+
+### Stunnel Management (`/stunnel`)
+
+**Note:** All Stunnel routes require a valid JWT.
+
+| Method | Endpoint  | Description                               | Authentication |
+| :----- | :-------- | :---------------------------------------- | :------------- |
+| `GET`  | `/status` | Gets the current status of Stunnel.       | Required       |
+| `POST` | `/enable` | Enables the Stunnel service.              | Required       |
+| `POST` | `/disable`| Disables the Stunnel service.             | Required       |
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a pull request or open an issue.
 
 ---
 

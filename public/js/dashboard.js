@@ -1,12 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
     /**
      * @class UltimateVPSDashboard
-     * Manages the entire state and user interaction for the dashboard application.
-     * This class handles authentication, API communication, data rendering, and event handling.
+     * @description Manages the entire state and user interaction for the dashboard application.
+     * This class handles authentication, API communication, data rendering, and event handling
+     * for all features, including SSH account and Stunnel management.
      */
     class UltimateVPSDashboard {
         /**
          * Initializes the dashboard application.
+         * It retrieves the authentication token from local storage and sets up
+         * the initial state of the application.
          */
         constructor() {
             /** @type {string|null} The authentication token for API requests. */
@@ -17,8 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Kicks off the application logic. Binds events and determines whether
-         * to show the login screen or the main dashboard based on token availability.
+         * Kicks off the application logic.
+         * It binds all DOM event listeners and determines whether to show the login
+         * screen or the main dashboard based on the presence of an auth token.
          */
         init() {
             this.bindEvents();
@@ -31,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         /**
          * Binds all necessary DOM event listeners for the application.
+         * This includes listeners for login, logout, account creation, and Stunnel management.
          */
         bindEvents() {
             document.getElementById('loginFormSubmit').addEventListener('submit', (e) => {
@@ -45,15 +50,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 this.handleCreateAccount();
             });
+
+            // Stunnel management buttons
+            document.getElementById('enableStunnelBtn').addEventListener('click', () => this.handleEnableStunnel());
+            document.getElementById('disableStunnelBtn').addEventListener('click', () => this.handleDisableStunnel());
         }
 
         /**
          * A generic wrapper for making authenticated API requests using `fetch`.
-         * It automatically includes the Authorization header and handles 401 Unauthorized errors.
+         * It automatically includes the Authorization header with the stored JWT
+         * and handles 401 Unauthorized errors by logging the user out.
          * @param {string} url - The API endpoint to request.
          * @param {object} [options={}] - The options for the `fetch` request (e.g., method, body).
          * @returns {Promise<any>} A promise that resolves with the JSON response from the API.
-         * @throws {Error} Throws an error if the request fails or the response is not ok.
+         * @throws {Error} Throws an error if the request fails, the response is not ok, or the user is unauthorized.
          */
         async apiFetch(url, options = {}) {
             const defaultOptions = {
@@ -76,8 +86,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         /**
          * Handles the user login form submission.
-         * It sends the credentials to the login API and, on success, stores the token
-         * and displays the main dashboard.
+         * It sends the user's credentials to the login API and, on success, stores
+         * the returned JWT in local storage and transitions to the main dashboard view.
          */
         async handleLogin() {
             const username = document.getElementById('username').value;
@@ -97,8 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Handles user logout. It clears the token from memory and local storage,
-         * cancels any real-time updates, and shows the login screen.
+         * Handles user logout.
+         * It clears the token from memory and local storage, cancels any active
+         * real-time update intervals, and shows the login screen.
          */
         handleLogout() {
             this.token = null;
@@ -111,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Shows the login form and hides the dashboard.
+         * Shows the login form and hides the main dashboard.
          */
         showLogin() {
             document.getElementById('loginForm').classList.remove('hidden');
@@ -119,8 +130,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Shows the main dashboard and hides the login form.
-         * It also triggers an initial data load and starts real-time updates.
+         * Shows the main dashboard view and hides the login form.
+         * It also triggers the initial load of all dashboard data and starts the
+         * real-time update polling.
          */
         showDashboard() {
             document.getElementById('loginForm').classList.add('hidden');
@@ -130,18 +142,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Loads all initial data for the dashboard concurrently.
+         * Loads all initial data for the dashboard by calling the respective
+         * data-loading methods concurrently.
          */
         async loadDashboardData() {
             await Promise.all([
                 this.loadServerStats(),
                 this.loadPortStatus(),
-                this.loadSSHAccounts()
+                this.loadSSHAccounts(),
+                this.loadStunnelStatus()
             ]);
         }
 
         /**
-         * Fetches and displays real-time server statistics (CPU, RAM, Disk).
+         * Fetches and renders the real-time server statistics (CPU, RAM, Disk).
          */
         async loadServerStats() {
             try {
@@ -155,7 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Fetches and displays the status of monitored network ports.
+         * Fetches and renders the status of monitored network ports.
          */
         async loadPortStatus() {
             try {
@@ -183,8 +197,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Fetches and displays the list of SSH accounts in a table.
-         * It also binds event listeners to the action buttons (toggle, delete) for each account.
+         * Fetches and renders the list of SSH accounts in a table.
+         * It also dynamically binds event listeners to the action buttons (toggle, delete)
+         * for each account.
          */
         async loadSSHAccounts() {
             try {
@@ -218,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         /**
          * Shows the modal dialog for creating a new SSH account.
-         * It pre-fills the expiry date to 30 days from now.
+         * It pre-fills the expiry date input to 30 days from the current date.
          */
         showCreateAccountModal() {
             const expiryDate = new Date();
@@ -228,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Hides the create account modal and resets the form.
+         * Hides the create account modal and resets its form fields.
          */
         hideCreateAccountModal() {
             document.getElementById('createAccountModal').classList.add('hidden');
@@ -236,8 +251,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Handles the submission of the create account form.
-         * It sends the new account data to the API and reloads the account list on success.
+         * Handles the submission of the create SSH account form.
+         * It gathers the form data, sends it to the API, and reloads the account
+         * list on success.
          */
         async handleCreateAccount() {
             const formData = {
@@ -270,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
-         * Deletes an SSH account after user confirmation.
+         * Deletes an SSH account after receiving user confirmation.
          * @param {string} username - The username of the account to delete.
          */
         async deleteAccount(username) {
@@ -287,6 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         /**
          * Starts a polling interval to periodically refresh the server stats and port status.
+         * This provides a real-time feel for the dashboard's monitoring features.
          */
         startRealTimeUpdates() {
             if (this.updateInterval) clearInterval(this.updateInterval);
@@ -295,6 +312,69 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.loadServerStats();
                 this.loadPortStatus();
             }, 30000);
+        }
+
+        /**
+         * Fetches the current status of the Stunnel service and updates the UI accordingly.
+         * It shows or hides the 'Enable' and 'Disable' buttons based on whether
+         * Stunnel is currently active.
+         */
+        async loadStunnelStatus() {
+            try {
+                const status = await this.apiFetch('/api/stunnel/status');
+                const stunnelStatusDiv = document.getElementById('stunnelStatus');
+                const enableBtn = document.getElementById('enableStunnelBtn');
+                const disableBtn = document.getElementById('disableStunnelBtn');
+
+                if (status.isActive) {
+                    stunnelStatusDiv.textContent = 'Active';
+                    stunnelStatusDiv.className = 'status-indicator status-online';
+                    enableBtn.classList.add('hidden');
+                    disableBtn.classList.remove('hidden');
+                } else {
+                    stunnelStatusDiv.textContent = 'Inactive';
+                    stunnelStatusDiv.className = 'status-indicator status-offline';
+                    enableBtn.classList.remove('hidden');
+                    disableBtn.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to load Stunnel status:', error);
+                document.getElementById('stunnelStatus').textContent = 'Error';
+            }
+        }
+
+        /**
+         * Handles the request to enable the Stunnel service.
+         * It shows a confirmation dialog before sending the request to the API and
+         * reloads the Stunnel status on success.
+         */
+        async handleEnableStunnel() {
+            if (confirm('Are you sure you want to enable Stunnel? This will generate a new SSL certificate and may restart the SSH service.')) {
+                try {
+                    const result = await this.apiFetch('/api/stunnel/enable', { method: 'POST' });
+                    alert(result.message);
+                    this.loadStunnelStatus();
+                } catch (error) {
+                    alert('Failed to enable Stunnel: ' + error.message);
+                }
+            }
+        }
+
+        /**
+         * Handles the request to disable the Stunnel service.
+         * It shows a confirmation dialog before sending the request to the API and
+         * reloads the Stunnel status on success.
+         */
+        async handleDisableStunnel() {
+            if (confirm('Are you sure you want to disable Stunnel?')) {
+                try {
+                    const result = await this.apiFetch('/api/stunnel/disable', { method: 'POST' });
+                    alert(result.message);
+                    this.loadStunnelStatus();
+                } catch (error) {
+                    alert('Failed to disable Stunnel: ' + error.message);
+                }
+            }
         }
     }
 

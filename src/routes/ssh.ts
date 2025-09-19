@@ -1,9 +1,7 @@
 /**
- * @file Defines and registers the routes for SSH account management.
- *
- * This file creates a Fastify plugin that groups all SSH-related endpoints.
- * All routes defined here are protected by the `authenticate` hook, ensuring
- * that only authenticated users can access them.
+ * @file Defines and registers API routes for SSH account management.
+ * @description This file creates a Fastify plugin that groups all SSH-related endpoints.
+ * All routes are protected by the `authenticate` hook, requiring a valid JWT for access.
  */
 
 import { FastifyInstance } from 'fastify';
@@ -16,13 +14,13 @@ import {
 import { authenticate } from '../utils/auth';
 
 /**
- * A Fastify plugin that registers routes for managing SSH accounts.
- *
- * It applies the `authenticate` hook to all routes within this plugin,
- * effectively protecting them from unauthorized access.
+ * Encapsulates and registers the SSH account management routes.
+ * This plugin applies the `authenticate` hook to all its routes, ensuring that
+ * only authenticated users can perform SSH management operations.
  *
  * @param {FastifyInstance} fastify - The Fastify server instance.
- * @returns {Promise<void>}
+ * @param {object} options - Plugin options, not used here.
+ * @param {Function} done - Callback to signal completion of plugin registration.
  */
 export async function sshRoutes(fastify: FastifyInstance): Promise<void> {
   // Apply the authentication hook to every route defined in this plugin.
@@ -31,34 +29,31 @@ export async function sshRoutes(fastify: FastifyInstance): Promise<void> {
 
   /**
    * @route GET /api/ssh/accounts
-   * @description Retrieves a list of all SSH accounts.
-   * @protected
+   * @description Retrieves a list of all SSH accounts, enriched with real-time data.
    * @handler getSshAccounts
    */
   fastify.get('/accounts', getSshAccounts);
 
   /**
    * @route POST /api/ssh/create
-   * @description Creates a new SSH account.
-   * @protected
+   * @description Creates a new SSH account on the system and in the database.
    * @handler createSshAccount
    */
   fastify.post('/create', createSshAccount);
 
   /**
    * @route PATCH /api/ssh/toggle/:username
-   * @description Toggles the active status of an SSH account (locks/unlocks the system user).
-   * @protected
-   * @param {string} username - The username of the account to toggle.
+   * @description Toggles the active status of a specific SSH account, effectively
+   * locking or unlocking the system user.
+   * @param {string} username - The username of the account to toggle, passed as a URL parameter.
    * @handler toggleSshAccount
    */
   fastify.patch('/toggle/:username', toggleSshAccount);
 
   /**
    * @route DELETE /api/ssh/delete/:username
-   * @description Deletes an SSH account from the database and the system.
-   * @protected
-   * @param {string} username - The username of the account to delete.
+   * @description Deletes an SSH account from the system and the database.
+   * @param {string} username - The username of the account to delete, passed as a URL parameter.
    * @handler deleteSshAccount
    */
   fastify.delete('/delete/:username', deleteSshAccount);

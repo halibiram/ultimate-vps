@@ -1,8 +1,7 @@
 /**
- * @file Defines and registers the authentication-related routes for the application.
- *
- * This file creates a Fastify plugin that encapsulates the routes for admin
- * registration and user login.
+ * @file Defines and registers authentication-related API routes.
+ * @description This file creates a Fastify plugin that encapsulates the endpoints
+ * for administrator registration and user login.
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -10,29 +9,33 @@ import { registerAdmin, login } from '../controllers/authController';
 import { User } from '@prisma/client';
 
 /**
- * A Fastify plugin that registers authentication routes.
- * It includes an endpoint for initial admin registration and an endpoint for user login.
+ * Encapsulates and registers the authentication routes.
+ * This Fastify plugin is responsible for setting up the `/register-admin` and `/login` endpoints.
  *
- * @param {FastifyInstance} fastify - The Fastify server instance.
- * @returns {Promise<void>}
+ * @param {FastifyInstance} fastify - The Fastify server instance to which the routes will be registered.
+ * @param {object} options - Plugin options, not used in this plugin.
+ * @param {Function} done - A function to call when the plugin registration is complete.
  */
 export async function authRoutes(fastify: FastifyInstance): Promise<void> {
 
   /**
    * @route POST /api/auth/register-admin
-   * @description Registers the first and only administrator account.
-   * This endpoint is intended for initial setup and should be protected or disabled afterward.
-   * @handler registerAdmin
+   * @description Registers the first and only administrator account for the application.
+   * This endpoint is intended for one-time initial setup and should be secured or
+   * disabled after the first admin is created. It delegates the core logic to the
+   * `registerAdmin` controller.
    */
   fastify.post('/register-admin', registerAdmin);
 
   /**
    * @route POST /api/auth/login
-   * @description Handles user login. On successful authentication, it returns a JWT.
-   * @handler In-line function
+   * @description Authenticates a user and provides a JSON Web Token (JWT) upon success.
+   * It first calls the `login` controller to validate credentials. If the validation
+   * is successful, it generates a JWT containing the user's ID, username, and admin status,
+   * and sends it to the client.
    */
   fastify.post('/login', async (request: FastifyRequest, reply: FastifyReply) => {
-    // The `login` controller function handles credential validation.
+    // The `login` controller handles credential validation.
     // It returns the user object on success or sends an error reply on failure.
     const user = await login(request, reply);
 
