@@ -1,11 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
+    /**
+     * @class UltimateVPSDashboard
+     * Manages the entire state and user interaction for the dashboard application.
+     * This class handles authentication, API communication, data rendering, and event handling.
+     */
     class UltimateVPSDashboard {
+        /**
+         * Initializes the dashboard application.
+         */
         constructor() {
+            /** @type {string|null} The authentication token for API requests. */
             this.token = localStorage.getItem('auth_token');
+            /** @type {number|null} The interval ID for real-time data updates. */
             this.updateInterval = null;
             this.init();
         }
 
+        /**
+         * Kicks off the application logic. Binds events and determines whether
+         * to show the login screen or the main dashboard based on token availability.
+         */
         init() {
             this.bindEvents();
             if (this.token) {
@@ -15,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        /**
+         * Binds all necessary DOM event listeners for the application.
+         */
         bindEvents() {
             document.getElementById('loginFormSubmit').addEventListener('submit', (e) => {
                 e.preventDefault();
@@ -30,6 +47,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        /**
+         * A generic wrapper for making authenticated API requests using `fetch`.
+         * It automatically includes the Authorization header and handles 401 Unauthorized errors.
+         * @param {string} url - The API endpoint to request.
+         * @param {object} [options={}] - The options for the `fetch` request (e.g., method, body).
+         * @returns {Promise<any>} A promise that resolves with the JSON response from the API.
+         * @throws {Error} Throws an error if the request fails or the response is not ok.
+         */
         async apiFetch(url, options = {}) {
             const defaultOptions = {
                 headers: {
@@ -49,6 +74,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return response.status === 204 ? null : response.json();
         }
 
+        /**
+         * Handles the user login form submission.
+         * It sends the credentials to the login API and, on success, stores the token
+         * and displays the main dashboard.
+         */
         async handleLogin() {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
@@ -62,10 +92,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('auth_token', this.token);
                 this.showDashboard();
             } catch (error) {
-                alert('Giriş başarısız: ' + error.message);
+                alert('Login failed: ' + error.message);
             }
         }
 
+        /**
+         * Handles user logout. It clears the token from memory and local storage,
+         * cancels any real-time updates, and shows the login screen.
+         */
         handleLogout() {
             this.token = null;
             localStorage.removeItem('auth_token');
@@ -76,11 +110,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        /**
+         * Shows the login form and hides the dashboard.
+         */
         showLogin() {
             document.getElementById('loginForm').classList.remove('hidden');
             document.getElementById('dashboard').classList.add('hidden');
         }
 
+        /**
+         * Shows the main dashboard and hides the login form.
+         * It also triggers an initial data load and starts real-time updates.
+         */
         showDashboard() {
             document.getElementById('loginForm').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
@@ -88,6 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
             this.startRealTimeUpdates();
         }
 
+        /**
+         * Loads all initial data for the dashboard concurrently.
+         */
         async loadDashboardData() {
             await Promise.all([
                 this.loadServerStats(),
@@ -96,6 +140,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ]);
         }
 
+        /**
+         * Fetches and displays real-time server statistics (CPU, RAM, Disk).
+         */
         async loadServerStats() {
             try {
                 const stats = await this.apiFetch('/api/stats/server');
@@ -107,6 +154,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        /**
+         * Fetches and displays the status of monitored network ports.
+         */
         async loadPortStatus() {
             try {
                 const ports = await this.apiFetch('/api/stats/ports');
@@ -132,6 +182,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        /**
+         * Fetches and displays the list of SSH accounts in a table.
+         * It also binds event listeners to the action buttons (toggle, delete) for each account.
+         */
         async loadSSHAccounts() {
             try {
                 const accounts = await this.apiFetch('/api/ssh/accounts');
@@ -139,14 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 tableBody.innerHTML = accounts.map(account => `
                     <tr class="hover:bg-gray-700" data-username="${account.username}">
                         <td class="p-3">${account.username}</td>
-                        <td class="p-3">${new Date(account.expiryDate).toLocaleDateString('tr-TR')}</td>
+                        <td class="p-3">${new Date(account.expiryDate).toLocaleDateString()}</td>
                         <td class="p-3">${account.maxLogin}</td>
                         <td class="p-3"><span class="bg-blue-600 text-xs px-2 py-1 rounded">${account.activeConnections || 0}</span></td>
-                        <td class="p-3"><span class="status-indicator ${account.isActive ? 'status-online' : 'status-offline'}"></span>${account.isActive ? 'Aktif' : 'Pasif'}</td>
+                        <td class="p-3"><span class="status-indicator ${account.isActive ? 'status-online' : 'status-offline'}"></span>${account.isActive ? 'Active' : 'Inactive'}</td>
                         <td class="p-3">
                             <div class="flex space-x-2">
-                                <button data-action="toggle" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1 rounded text-xs">${account.isActive ? 'Durdur' : 'Aktifleştir'}</button>
-                                <button data-action="delete" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-xs">Sil</button>
+                                <button data-action="toggle" class="bg-yellow-600 hover:bg-yellow-700 px-3 py-1 rounded text-xs">${account.isActive ? 'Deactivate' : 'Activate'}</button>
+                                <button data-action="delete" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-xs">Delete</button>
                             </div>
                         </td>
                     </tr>
@@ -162,6 +216,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        /**
+         * Shows the modal dialog for creating a new SSH account.
+         * It pre-fills the expiry date to 30 days from now.
+         */
         showCreateAccountModal() {
             const expiryDate = new Date();
             expiryDate.setDate(expiryDate.getDate() + 30);
@@ -169,11 +227,18 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('createAccountModal').classList.remove('hidden');
         }
 
+        /**
+         * Hides the create account modal and resets the form.
+         */
         hideCreateAccountModal() {
             document.getElementById('createAccountModal').classList.add('hidden');
             document.getElementById('createAccountForm').reset();
         }
 
+        /**
+         * Handles the submission of the create account form.
+         * It sends the new account data to the API and reloads the account list on success.
+         */
         async handleCreateAccount() {
             const formData = {
                 username: document.getElementById('newUsername').value,
@@ -183,37 +248,49 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             try {
                 await this.apiFetch('/api/ssh/create', { method: 'POST', body: JSON.stringify(formData) });
-                alert('SSH hesabı başarıyla oluşturuldu!');
+                alert('SSH account created successfully!');
                 this.hideCreateAccountModal();
                 this.loadSSHAccounts();
             } catch (error) {
-                alert('Hata: ' + error.message);
+                alert('Error: ' + error.message);
             }
         }
 
+        /**
+         * Toggles the active status of an SSH account.
+         * @param {string} username - The username of the account to toggle.
+         */
         async toggleAccount(username) {
             try {
                 await this.apiFetch(`/api/ssh/toggle/${username}`, { method: 'PATCH' });
-                this.loadSSHAccounts();
+                this.loadSSHAccounts(); // Reload the list to show the new status
             } catch (error) {
-                alert('İşlem başarısız: ' + error.message);
+                alert('Operation failed: ' + error.message);
             }
         }
 
+        /**
+         * Deletes an SSH account after user confirmation.
+         * @param {string} username - The username of the account to delete.
+         */
         async deleteAccount(username) {
-            if (confirm(`${username} hesabını silmek istediğinizden emin misiniz?`)) {
+            if (confirm(`Are you sure you want to delete the account for ${username}?`)) {
                 try {
                     await this.apiFetch(`/api/ssh/delete/${username}`, { method: 'DELETE' });
-                    alert('Hesap başarıyla silindi!');
-                    this.loadSSHAccounts();
+                    alert('Account deleted successfully!');
+                    this.loadSSHAccounts(); // Reload the list to remove the deleted account
                 } catch (error) {
-                    alert('Silme işlemi başarısız: ' + error.message);
+                    alert('Delete operation failed: ' + error.message);
                 }
             }
         }
 
+        /**
+         * Starts a polling interval to periodically refresh the server stats and port status.
+         */
         startRealTimeUpdates() {
             if (this.updateInterval) clearInterval(this.updateInterval);
+            // Refresh stats every 30 seconds.
             this.updateInterval = setInterval(() => {
                 this.loadServerStats();
                 this.loadPortStatus();
@@ -221,5 +298,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Instantiate the class to start the application.
     new UltimateVPSDashboard();
 });

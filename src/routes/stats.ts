@@ -1,21 +1,41 @@
+/**
+ * @file Defines and registers the routes for fetching server statistics.
+ *
+ * This file creates a Fastify plugin for all statistics-related endpoints.
+ * All routes defined here are protected by the `authenticate` hook, ensuring
+ * that only authenticated users can access them.
+ */
+
 import { FastifyInstance } from 'fastify';
 import { getServerStats, getPortStatus } from '../controllers/statsController';
 import { authenticate } from '../utils/auth';
 
 /**
- * Defines the routes for fetching server statistics.
- * All routes are protected and require authentication.
- * @param fastify The Fastify instance.
+ * A Fastify plugin that registers routes for fetching server statistics.
+ *
+ * It applies the `authenticate` hook to all routes within this plugin,
+ * protecting them from unauthorized access.
+ *
+ * @param {FastifyInstance} fastify - The Fastify server instance.
+ * @returns {Promise<void>}
  */
-export async function statsRoutes(fastify: FastifyInstance) {
+export async function statsRoutes(fastify: FastifyInstance): Promise<void> {
   // Protect all routes in this file with the authentication hook.
   fastify.addHook('preHandler', authenticate);
 
-  // GET /api/stats/server
-  // Returns server stats like CPU, RAM, and Disk usage.
+  /**
+   * @route GET /api/stats/server
+   * @description Returns real-time server stats like CPU, RAM, and Disk usage.
+   * @protected
+   * @handler getServerStats
+   */
   fastify.get('/server', getServerStats);
 
-  // GET /api/stats/ports
-  // Returns the number of active connections on monitored ports.
+  /**
+   * @route GET /api/stats/ports
+   * @description Returns the number of active connections on monitored network ports.
+   * @protected
+   * @handler getPortStatus
+   */
   fastify.get('/ports', getPortStatus);
 }

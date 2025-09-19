@@ -1,3 +1,12 @@
+/**
+ * @file Manages the business logic for SSH account operations.
+ *
+ * This controller handles creating, retrieving, updating, and deleting SSH accounts.
+ * It orchestrates interactions between the database (via Prisma) and the underlying
+ * operating system (via `SSHService`). It also instantiates and shares a single
+ * instance of the Prisma Client and the SSHService for use in its functions.
+ */
+
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { PrismaClient, SSHAccount } from '@prisma/client';
 import { SSHService } from '../services/sshService';
@@ -6,15 +15,23 @@ const prisma = new PrismaClient();
 const sshService = new SSHService();
 
 /**
- * Retrieves all SSH accounts from the database and enriches them with live connection data.
+ * Retrieves all SSH accounts from the database and enriches them with live data.
+ *
+ * This function fetches all SSH account records and, for each account, it calls
+ * the `SSHService` to get the number of active system connections for that user.
+ *
+ * @param {FastifyRequest} request - The Fastify request object.
+ * @param {FastifyReply} reply - The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply containing
+ * an array of SSH account objects, each enriched with an `activeConnections` count.
  */
-export async function getSshAccounts(request: FastifyRequest, reply: FastifyReply) {
+export async function getSshAccounts(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   try {
     const accounts = await prisma.sSHAccount.findMany({
       orderBy: { createdAt: 'desc' },
     });
 
-    // Enrich each account with the number of active connections
+    // Enrich each account with the number of active connections.
     const enrichedAccounts = await Promise.all(
       accounts.map(async (account: SSHAccount) => {
         const activeConnections = await sshService.getUserConnections(account.username);
@@ -30,9 +47,24 @@ export async function getSshAccounts(request: FastifyRequest, reply: FastifyRepl
 }
 
 /**
- * Creates a new SSH account (both system user and database record).
+ * Creates a new SSH account, which includes creating a system user and a database record.
+ *
+ * It follows a two-step process:
+ * 1. Create the system user using `SSHService`.
+ * 2. If successful, create a corresponding record in the database.
+ * If the database insertion fails, it attempts to roll back by deleting the created system user.
+ *
+ * @param {FastifyRequest} request - The Fastify request object.
+ * @param {object} request.body - The request body.
+ * @param {string} request.body.username - The username for the new SSH account.
+ * @param {string} request.body.password - The password for the new account.
+ * @param {string} request.body.expiryDate - The expiration date for the account (ISO 8601 format).
+ * @param {number} [request.body.maxLogin=1] - The maximum number of simultaneous logins.
+ * @param {FastifyReply} reply - The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply, containing
+ * the newly created SSH account object on success.
  */
-export async function createSshAccount(request: FastifyRequest, reply: FastifyReply) {
+export async function createSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const { username, password, expiryDate, maxLogin } = request.body as any;
   const adminUser = request.user; // Decoded from JWT
 
@@ -41,18 +73,17 @@ export async function createSshAccount(request: FastifyRequest, reply: FastifyRe
   }
 
   try {
-    // Step 1: Create the system user via the SSHService
+    // Step 1: Create the system user via the SSHService.
     const userCreated = await sshService.createSSHUser(username, password);
     if (!userCreated) {
-      // If the OS user can't be created, don't proceed.
       throw new Error('Failed to create system user.');
     }
 
-    // Step 2: If system user is created, create the database record
+    // Step 2: If system user is created, create the database record.
     const newAccount = await prisma.sSHAccount.create({
       data: {
         username,
-        password, // Note: Storing plain password for simplicity as per prompt's likely intent. In a real app, hash or encrypt this.
+        password, // Note: Storing plain password. In a real app, hash or encrypt this.
         expiryDate: new Date(expiryDate),
         maxLogin: Number(maxLogin) || 1,
         userId: adminUser.id,
@@ -74,9 +105,20 @@ export async function createSshAccount(request: FastifyRequest, reply: FastifyRe
 }
 
 /**
- * Toggles the active status of an SSH account (and locks/unlocks the system user).
+ * Toggles the active status of an SSH account.
+ *
+ * This function finds an SSH account by its username, determines the new status
+ * (active -> inactive, or inactive -> active), and then updates both the system
+ * user (by locking or unlocking the account) and the database record.
+ *
+ * @param {FastifyRequest} request - The Fastify request object.
+ * @param {object} request.params - The URL parameters.
+ * @param {string} request.params.username - The username of the account to toggle.
+ * @param {FastifyReply} reply - The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply, containing
+ * the updated SSH account object on success.
  */
-export async function toggleSshAccount(request: FastifyRequest, reply: FastifyReply) {
+export async function toggleSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     const { username } = request.params as any;
     try {
         const account = await prisma.sSHAccount.findUnique({ where: { username } });
@@ -106,9 +148,20 @@ export async function toggleSshAccount(request: FastifyRequest, reply: FastifyRe
 }
 
 /**
- * Deletes an SSH account (from the database and the system).
+ * Deletes an SSH account from both the database and the operating system.
+ *
+ * It first deletes the account from the database. If successful, it proceeds
+ * to delete the corresponding system user. This order ensures that if the system
+ * user deletion fails, we don't have an orphaned database record.
+ *
+ * @param {FastifyRequest} request - The Fastify request object.
+ * @param {object} request.params - The URL parameters.
+ * @param {string} request.params.username - The username of the account to delete.
+ * @param {FastifyReply} reply - The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success,
+ * it sends a 204 No Content response.
  */
-export async function deleteSshAccount(request: FastifyRequest, reply: FastifyReply) {
+export async function deleteSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     const { username } = request.params as any;
     try {
         // Step 1: Delete from the database first. If this fails, no harm is done to the OS.
@@ -117,7 +170,7 @@ export async function deleteSshAccount(request: FastifyRequest, reply: FastifyRe
         // Step 2: If database deletion is successful, delete the system user.
         const userDeleted = await sshService.deleteSSHUser(username);
         if (!userDeleted) {
-            // Log this issue, but the request is still successful from the client's perspective.
+            // Log this critical issue, but the request is still successful from the client's perspective.
             console.error(`CRITICAL: Failed to delete system user ${username}, but the database entry was removed.`);
         }
 
