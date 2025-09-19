@@ -52,8 +52,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Stunnel management buttons
-            document.getElementById('enableStunnelBtn').addEventListener('click', () => this.handleEnableStunnel());
-            document.getElementById('disableStunnelBtn').addEventListener('click', () => this.handleDisableStunnel());
+            if (document.getElementById('enableStunnelBtn')) {
+                document.getElementById('enableStunnelBtn').addEventListener('click', () => this.handleEnableStunnel());
+                document.getElementById('disableStunnelBtn').addEventListener('click', () => this.handleDisableStunnel());
+            }
+
+            // Dropbear management buttons
+            document.getElementById('enableDropbearBtn').addEventListener('click', () => this.handleEnableDropbear());
+            document.getElementById('disableDropbearBtn').addEventListener('click', () => this.handleDisableDropbear());
         }
 
         /**
@@ -150,7 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.loadServerStats(),
                 this.loadPortStatus(),
                 this.loadSSHAccounts(),
-                this.loadStunnelStatus()
+                this.loadStunnelStatus(),
+                this.loadDropbearStatus()
             ]);
         }
 
@@ -373,6 +380,64 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.loadStunnelStatus();
                 } catch (error) {
                     alert('Failed to disable Stunnel: ' + error.message);
+                }
+            }
+        }
+
+        /**
+         * Fetches the current status of the Dropbear service and updates the UI.
+         */
+        async loadDropbearStatus() {
+            try {
+                const status = await this.apiFetch('/api/dropbear/status');
+                const dropbearStatusDiv = document.getElementById('dropbearStatus');
+                const dropbearStatusText = document.getElementById('dropbearStatusText');
+                const enableBtn = document.getElementById('enableDropbearBtn');
+                const disableBtn = document.getElementById('disableDropbearBtn');
+
+                if (status.isActive) {
+                    dropbearStatusDiv.className = 'status-indicator status-online';
+                    dropbearStatusText.textContent = 'Active';
+                    enableBtn.classList.add('hidden');
+                    disableBtn.classList.remove('hidden');
+                } else {
+                    dropbearStatusDiv.className = 'status-indicator status-offline';
+                    dropbearStatusText.textContent = 'Inactive';
+                    enableBtn.classList.remove('hidden');
+                    disableBtn.classList.add('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to load Dropbear status:', error);
+                document.getElementById('dropbearStatusText').textContent = 'Error';
+            }
+        }
+
+        /**
+         * Handles the request to enable the Dropbear service.
+         */
+        async handleEnableDropbear() {
+            if (confirm('Are you sure you want to enable Dropbear?')) {
+                try {
+                    const result = await this.apiFetch('/api/dropbear/enable', { method: 'POST' });
+                    alert(result.message);
+                    this.loadDropbearStatus();
+                } catch (error) {
+                    alert('Failed to enable Dropbear: ' + error.message);
+                }
+            }
+        }
+
+        /**
+         * Handles the request to disable the Dropbear service.
+         */
+        async handleDisableDropbear() {
+            if (confirm('Are you sure you want to disable Dropbear?')) {
+                try {
+                    const result = await this.apiFetch('/api/dropbear/disable', { method: 'POST' });
+                    alert(result.message);
+                    this.loadDropbearStatus();
+                } catch (error) {
+                    alert('Failed to disable Dropbear: ' + error.message);
                 }
             }
         }

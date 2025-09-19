@@ -16,6 +16,7 @@ import { authRoutes } from './routes/auth';
 import { sshRoutes } from './routes/ssh';
 import { statsRoutes } from './routes/stats';
 import { stunnelRoutes } from './routes/stunnel';
+import { dropbearRoutes } from './routes/dropbear';
 
 /**
  * Extends the FastifyJWT interface to include a custom `user` payload.
@@ -76,6 +77,7 @@ async function start(): Promise<void> {
     await fastify.register(sshRoutes, { prefix: '/api/ssh' });
     await fastify.register(statsRoutes, { prefix: '/api/stats' });
     await fastify.register(stunnelRoutes, { prefix: '/api/stunnel' });
+    await fastify.register(dropbearRoutes, { prefix: '/api/dropbear' });
 
     // A simple health check endpoint to confirm the server is running.
     fastify.get('/health', async () => {

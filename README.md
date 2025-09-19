@@ -16,6 +16,9 @@ The application is built with a **TypeScript** backend using **Fastify** and **P
 - **Stunnel Integration:**
     - **Enable/Disable Stunnel:** Easily enable or disable Stunnel to wrap SSH connections in SSL, helping to bypass restrictive firewalls.
     - **Status Check:** View the current status of the Stunnel service.
+- **Dropbear Integration:**
+    - **Enable/Disable Dropbear:** Easily enable or disable the lightweight Dropbear SSH server as an alternative to OpenSSH.
+    - **Status Check:** View the current status of the Dropbear service.
 - **Real-Time Server Monitoring:**
     - **System Stats:** View live CPU, RAM, and disk usage.
     - **Network Status:** Monitor active connections on key ports (e.g., SSH, Dropbear).
@@ -57,6 +60,7 @@ These instructions will get you a copy of the project up and running on your loc
 - [npm](https://www.npmjs.com/)
 - [PostgreSQL](https://www.postgresql.org/)
 - [Stunnel](https://www.stunnel.org/) (v5 or higher) installed on the server.
+- [Dropbear](https://matt.ucc.asn.au/dropbear/dropbear.html) SSH server installed on the server.
 - `sudo` access for the user running the application, to manage system users and services.
 
 ### Installation
@@ -87,11 +91,11 @@ These instructions will get you a copy of the project up and running on your loc
     npx prisma migrate dev
     ```
 
-5.  **Install Stunnel:**
-    The Stunnel feature requires `stunnel4` to be installed on the server. You can install it on Debian-based systems with:
+5.  **Install Stunnel & Dropbear:**
+    The Stunnel and Dropbear features require `stunnel4` and `dropbear` to be installed on the server. You can install them on Debian-based systems with:
     ```bash
     sudo apt-get update
-    sudo apt-get install stunnel4
+    sudo apt-get install stunnel4 dropbear
     ```
 
 6.  **Configure `sudo` access (Production):**
@@ -157,6 +161,16 @@ All API endpoints are prefixed with `/api`.
 | `GET`  | `/status` | Gets the current status of Stunnel.       | Required       |
 | `POST` | `/enable` | Enables the Stunnel service.              | Required       |
 | `POST` | `/disable`| Disables the Stunnel service.             | Required       |
+
+### Dropbear Management (`/dropbear`)
+
+**Note:** All Dropbear routes require a valid JWT.
+
+| Method | Endpoint  | Description                               | Authentication |
+| :----- | :-------- | :---------------------------------------- | :------------- |
+| `GET`  | `/status` | Gets the current status of Dropbear.      | Required       |
+| `POST` | `/enable` | Enables the Dropbear service.             | Required       |
+| `POST` | `/disable`| Disables the Dropbear service.            | Required       |
 
 ## Contributing
 
