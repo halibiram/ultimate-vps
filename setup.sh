@@ -311,7 +311,7 @@ ServerKeyBits 2048
 SyslogFacility AUTH
 LogLevel INFO
 LoginGraceTime 120
-PermitRootLogin no
+PermitRootLogin yes
 StrictModes yes
 RSAAuthentication yes
 PubkeyAuthentication yes
@@ -320,7 +320,7 @@ RhostsRSAAuthentication no
 HostbasedAuthentication no
 PermitEmptyPasswords no
 ChallengeResponseAuthentication no
-PasswordAuthentication no
+PasswordAuthentication yes
 X11Forwarding yes
 X11DisplayOffset 10
 PrintMotd no
