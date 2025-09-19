@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate VPS Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/css/dashboard.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+    <div id="app">
+        <nav class="bg-gray-800 border-b border-gray-700 p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-blue-400">
+                    <i class="fas fa-server"></i> Ultimate VPS
+                </h1>
+                <div class="flex items-center space-x-4">
+                    <span id="userInfo" class="text-sm text-gray-300"></span>
+                    <button id="logoutBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">
+                        <i class="fas fa-sign-out-alt"></i> Çıkış
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mx-auto p-6">
+            <!-- Login Form -->
+            <div id="loginForm" class="max-w-md mx-auto bg-gray-800 p-8 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-bold mb-6 text-center">Giriş Yap</h2>
+                <form id="loginFormSubmit">
+                    <div class="mb-4">
+                        <input type="text" id="username" placeholder="Kullanıcı Adı"
+                               class="w-full p-3 bg-gray-700 border border-gray-600 rounded">
+                    </div>
+                    <div class="mb-6">
+                        <input type="password" id="password" placeholder="Şifre"
+                               class="w-full p-3 bg-gray-700 border border-gray-600 rounded">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded">
+                        Giriş Yap
+                    </button>
+                </form>
+            </div>
+
+            <!-- Dashboard -->
+            <div id="dashboard" class="hidden">
+                <!-- Server Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-gray-800 p-6 rounded-lg">
+                        <div class="flex items-center">
+                            <i class="fas fa-microchip text-blue-400 text-2xl mr-4"></i>
+                            <div>
+                                <p class="text-sm text-gray-400">CPU Kullanımı</p>
+                                <p class="text-2xl font-bold" id="cpuUsage">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg">
+                        <div class="flex items-center">
+                            <i class="fas fa-memory text-green-400 text-2xl mr-4"></i>
+                            <div>
+                                <p class="text-sm text-gray-400">RAM Kullanımı</p>
+                                <p class="text-2xl font-bold" id="ramUsage">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg">
+                        <div class="flex items-center">
+                            <i class="fas fa-hdd text-yellow-400 text-2xl mr-4"></i>
+                            <div>
+                                <p class="text-sm text-gray-400">Disk Kullanımı</p>
+                                <p class="text-2xl font-bold" id="diskUsage">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg">
+                        <div class="flex items-center">
+                            <i class="fas fa-users text-purple-400 text-2xl mr-4"></i>
+                            <div>
+                                <p class="text-sm text-gray-400">Aktif Bağlantılar</p>
+                                <p class="text-2xl font-bold" id="activeConnections">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Port Status -->
+                <div class="bg-gray-800 p-6 rounded-lg mb-8">
+                    <h3 class="text-xl font-bold mb-4">Port Durumu</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="portStatus">
+                        <!-- Port status will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- SSH Account Management -->
+                <div class="bg-gray-800 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4">SSH Hesap Yönetimi</h3>
+
+                    <div class="mb-6">
+                        <button id="createAccountBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+                            <i class="fas fa-plus"></i> Yeni Hesap Oluştur
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-700">
+                                <tr>
+                                    <th class="p-3">Kullanıcı Adı</th>
+                                    <th class="p-3">Bitiş Tarihi</th>
+                                    <th class="p-3">Max Oturum</th>
+                                    <th class="p-3">Aktif Bağlantı</th>
+                                    <th class="p-3">Durum</th>
+                                    <th class="p-3">İşlemler</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sshAccountsList" class="divide-y divide-gray-700">
+                                <!-- SSH accounts will be populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Account Modal -->
+    <div id="createAccountModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-6">Yeni SSH Hesabı Oluştur</h3>
+            <form id="createAccountForm">
+                <div class="mb-4">
+                    <input type="text" id="newUsername" placeholder="Kullanıcı Adı"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded" required>
+                </div>
+                <div class="mb-4">
+                    <input type="password" id="newPassword" placeholder="Şifre"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded" required>
+                </div>
+                <div class="mb-4">
+                    <input type="number" id="maxLogin" placeholder="Max Oturum (1-5)" min="1" max="5" value="1"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded" required>
+                </div>
+                <div class="mb-6">
+                    <input type="date" id="expiryDate"
+                           class="w-full p-3 bg-gray-700 border border-gray-600 rounded" required>
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 p-3 rounded">
+                        Oluştur
+                    </button>
+                    <button type="button" id="cancelCreateAccount" class="flex-1 bg-gray-600 hover:bg-gray-700 p-3 rounded">
+                        İptal
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
