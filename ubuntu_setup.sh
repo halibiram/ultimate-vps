@@ -26,7 +26,7 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 # --- Configuration ---
 APP_USER="ultimatevps"
 APP_INSTALL_DIR="/opt/ultimatevps"
-APP_SOURCE_DIR=$(pwd)
+APP_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_NAME="ultimatevps_db"
 DB_USER="ultimatevps_user"
 DB_PASS=$(openssl rand -hex 16) # Generate a URL-safe random password
@@ -50,7 +50,13 @@ main() {
         print_success "User '$APP_USER' created."
     fi
 
-    # 3. Prepare Application Directory
+    # 3. Install Rsync and Prepare Application Directory
+    print_status "Updating package list and installing rsync..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y rsync
+    print_success "rsync installed."
+
     print_status "Setting up application directory at $APP_INSTALL_DIR..."
     mkdir -p "$APP_INSTALL_DIR"
     # Use rsync to copy files, which is generally better than cp
@@ -59,9 +65,7 @@ main() {
     print_success "Application files copied and permissions set."
 
     # 4. System Update and Dependency Installation
-    print_status "Updating system and installing dependencies..."
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update
+    print_status "Upgrading system and installing dependencies..."
     apt-get upgrade -y
     apt-get install -y curl gnupg
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -77,9 +81,10 @@ main() {
     sudo -u postgres psql -c "DROP DATABASE IF EXISTS $DB_NAME;" &>/dev/null
     sudo -u postgres psql -c "DROP USER IF EXISTS $DB_USER;" &>/dev/null
     # Create the user and database
-    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" &>/dev/null
-    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" &>/dev/null
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" &>/dev/null
+    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" >/dev/null || { print_error "Failed to create PostgreSQL database."; exit 1; }
+    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" >/dev/null || { print_error "Failed to create PostgreSQL user."; exit 1; }
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" >/dev/null || { print_error "Failed to grant privileges to PostgreSQL user."; exit 1; }
+    sudo -u postgres psql -d $DB_NAME -c "GRANT ALL ON SCHEMA public TO $DB_USER;" >/dev/null || { print_error "Failed to grant schema privileges to PostgreSQL user."; exit 1; }
     print_success "PostgreSQL database '$DB_NAME' and user '$DB_USER' created."
 
     # 6. Configure Redis
@@ -130,8 +135,17 @@ EOF
 
     # 9. Configure Sudoers for Service Commands
     print_status "Configuring passwordless sudo for the application..."
+    # Find command paths dynamically to avoid issues on different systems
+    CMD_USERADD=$(which useradd)
+    CMD_USERDEL=$(which userdel)
+    CMD_USERMOD=$(which usermod)
+    CMD_SYSTEMCTL=$(which systemctl)
+    CMD_OPENSSL=$(which openssl)
+    CMD_TEE=$(which tee)
+    CMD_SED=$(which sed)
+
     SUDOERS_FILE="/etc/sudoers.d/ultimate-vps"
-    echo "$APP_USER ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /bin/systemctl, /usr/bin/openssl, /bin/tee, /usr/bin/sed" > "$SUDOERS_FILE"
+    echo "$APP_USER ALL=(ALL) NOPASSWD: $CMD_USERADD, $CMD_USERDEL, $CMD_USERMOD, $CMD_SYSTEMCTL, $CMD_OPENSSL, $CMD_TEE, $CMD_SED" > "$SUDOERS_FILE"
     chmod 0440 "$SUDOERS_FILE"
     print_success "Sudoers file created at $SUDOERS_FILE."
 
@@ -147,7 +161,7 @@ After=network.target postgresql.service redis-server.service
 User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_INSTALL_DIR
-ExecStart=$(which npm) run start
+ExecStart=/usr/bin/npm run start
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
