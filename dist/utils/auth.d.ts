@@ -1,16 +1,22 @@
+/**
+ * @file Provides authentication-related utility functions.
+ * @description This file contains middleware for verifying JWTs to protect routes.
+ */
 import { FastifyRequest, FastifyReply } from 'fastify';
 /**
- * A Fastify hook to verify the JWT on an incoming request. It acts as a middleware
- * to protect routes that require user authentication.
+ * A Fastify hook that serves as authentication middleware.
+ * This function verifies the JSON Web Token (JWT) on an incoming request. It is intended
+ * to be used as a `preHandler` hook in Fastify to protect routes that require
+ * authentication. It leverages the `request.jwtVerify()` method provided by the
+ * `@fastify/jwt` plugin.
  *
- * It uses the `jwtVerify` method decorated onto the request object by the `@fastify/jwt`
- * plugin. If the JWT is valid, the request is allowed to proceed. If verification
- * fails (e.g., invalid token, expired), it sends a 401 Unauthorized response
- * and stops the request from reaching the route handler.
- *
- * @param {FastifyRequest} request - The incoming request object from Fastify.
- * @param {FastifyReply} reply - The reply object from Fastify, used to send a response.
- * @returns {Promise<void>} A promise that resolves if authentication is successful.
+ * @param {FastifyRequest} request The incoming Fastify request object. The hook will look
+ * for a JWT in the `Authorization` header.
+ * @param {FastifyReply} reply The Fastify reply object. It is used to send a 401
+ * Unauthorized response if JWT verification fails.
+ * @returns {Promise<void>} A promise that resolves if authentication is successful,
+ * allowing the request to proceed to the route handler. If authentication fails,
+ * the promise may not resolve as a reply is sent, halting the request lifecycle.
  */
 export declare function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void>;
 //# sourceMappingURL=auth.d.ts.map

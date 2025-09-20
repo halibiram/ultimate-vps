@@ -1,13 +1,14 @@
 /**
- * @file This is the main entry point for the Ultimate VPS SSH Manager server.
- *
- * It initializes a Fastify server and configures it with all the necessary
- * plugins, routes, and error handling. This file is responsible for starting
- * the server and listening for incoming requests.
+ * @file Main entry point for the Ultimate VPS SSH Manager server.
+ * @description This file initializes and configures the Fastify server, registers all
+ * plugins and routes, and starts listening for incoming HTTP requests.
  */
+import 'dotenv/config';
 /**
  * Extends the FastifyJWT interface to include a custom `user` payload.
- * This provides type safety for the decoded JWT payload throughout the application.
+ * This provides type safety for the decoded JWT payload throughout the application,
+ * making the user's identity and permissions available on the request object after
+ * authentication.
  */
 declare module '@fastify/jwt' {
     interface FastifyJWT {
@@ -18,5 +19,4 @@ declare module '@fastify/jwt' {
         };
     }
 }
-export {};
 //# sourceMappingURL=server.d.ts.map
