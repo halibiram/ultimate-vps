@@ -4,12 +4,14 @@
  * plugins and routes, and starts listening for incoming HTTP requests.
  */
 
+import 'dotenv/config';
 import Fastify from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import jwt from '@fastify/jwt';
 import redis from '@fastify/redis';
 import cors from '@fastify/cors';
 import staticPlugin from '@fastify/static';
+import websocket from '@fastify/websocket';
 import path from 'path';
 
 import { authRoutes } from './routes/auth';
@@ -17,6 +19,7 @@ import { sshRoutes } from './routes/ssh';
 import { statsRoutes } from './routes/stats';
 import { stunnelRoutes } from './routes/stunnel';
 import { dropbearRoutes } from './routes/dropbear';
+import { webConsoleRoutes } from './routes/webConsole';
 
 /**
  * Extends the FastifyJWT interface to include a custom `user` payload.
@@ -65,6 +68,7 @@ async function start(): Promise<void> {
     await fastify.register(cors, { origin: true }); // Allow all origins for simplicity
     await fastify.register(jwt, { secret: process.env.JWT_SECRET as string });
     await fastify.register(redis, { url: process.env.REDIS_URL as string });
+    await fastify.register(websocket);
 
     // Serve the frontend static files from the 'public' directory
     await fastify.register(staticPlugin, {
@@ -78,6 +82,7 @@ async function start(): Promise<void> {
     await fastify.register(statsRoutes, { prefix: '/api/stats' });
     await fastify.register(stunnelRoutes, { prefix: '/api/stunnel' });
     await fastify.register(dropbearRoutes, { prefix: '/api/dropbear' });
+    await fastify.register(webConsoleRoutes, { prefix: '/api/web-console' });
 
     // A simple health check endpoint to confirm the server is running.
     fastify.get('/health', async () => {

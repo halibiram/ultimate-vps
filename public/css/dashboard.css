@@ -47,3 +47,18 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/*
+ * Web Console / Xterm.js specific styles
+ */
+#terminal {
+    height: 450px; /* A fixed height for the terminal container */
+    padding: 10px; /* Padding inside the terminal container */
+    overflow: hidden; /* Hide any overflow from the container itself */
+    resize: vertical; /* Allow vertical resizing */
+}
+
+/* Ensure the xterm viewport fills our container */
+#terminal .xterm-viewport {
+    width: 100% !important; /* Override any inline styles if necessary */
+}

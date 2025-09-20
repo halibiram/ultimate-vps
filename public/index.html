@@ -6,6 +6,10 @@
     <title>Ultimate VPS Dashboard</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Xterm.js for the web console -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <link href="/css/dashboard.css" rel="stylesheet">
 </head>
 <body class="bg-gray-900 text-white">
@@ -138,6 +142,12 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Web Console -->
+                <div id="web-console-container" class="bg-gray-800 p-6 rounded-lg mt-8">
+                    <h3 class="text-xl font-bold mb-4">Web Konsolu</h3>
+                    <div id="terminal" class="bg-black rounded-md"></div>
                 </div>
             </div>
         </div>

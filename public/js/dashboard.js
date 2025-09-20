@@ -16,6 +16,12 @@ document.addEventListener('DOMContentLoaded', () => {
             this.token = localStorage.getItem('auth_token');
             /** @type {number|null} The interval ID for real-time data updates. */
             this.updateInterval = null;
+            /** @type {Terminal|null} The xterm.js terminal instance. */
+            this.terminal = null;
+            /** @type {FitAddon|null} The xterm.js fit addon instance. */
+            this.fitAddon = null;
+            /** @type {WebSocket|null} The WebSocket for the web console. */
+            this.webSocket = null;
             this.init();
         }
 
@@ -125,6 +131,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(this.updateInterval);
                 this.updateInterval = null;
             }
+            if (this.webSocket) {
+                this.webSocket.close();
+                this.webSocket = null;
+            }
         }
 
         /**
@@ -145,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('dashboard').classList.remove('hidden');
             this.loadDashboardData();
             this.startRealTimeUpdates();
+            this.initWebConsole();
         }
 
         /**
@@ -440,6 +451,85 @@ document.addEventListener('DOMContentLoaded', () => {
                     alert('Failed to disable Dropbear: ' + error.message);
                 }
             }
+        }
+
+        /**
+         * Initializes the web console terminal.
+         * This method sets up xterm.js, establishes a WebSocket connection, and
+         * wires up all the event listeners for two-way communication.
+         */
+        initWebConsole() {
+            if (this.terminal) {
+                // If the terminal is already initialized, do nothing.
+                return;
+            }
+
+            const terminalContainer = document.getElementById('terminal');
+            if (!terminalContainer) {
+                console.error('Terminal container not found.');
+                return;
+            }
+
+            this.terminal = new Terminal({
+                cursorBlink: true,
+                theme: {
+                    background: '#000000',
+                    foreground: '#FFFFFF',
+                    cursor: '#FFFFFF',
+                }
+            });
+
+            this.fitAddon = new FitAddon.FitAddon();
+            this.terminal.loadAddon(this.fitAddon);
+            this.terminal.open(terminalContainer);
+
+            // Determine WebSocket protocol (ws or wss)
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/api/web-console?token=${this.token}`;
+
+            // Establish WebSocket connection
+            this.webSocket = new WebSocket(wsUrl);
+
+            this.webSocket.onopen = () => {
+                console.log('Web console WebSocket connected.');
+                this.fitAddon.fit();
+            };
+
+            this.webSocket.onmessage = (event) => {
+                // Messages from the server are written to the terminal
+                this.terminal.write(event.data);
+            };
+
+            this.webSocket.onclose = () => {
+                console.log('Web console WebSocket disconnected.');
+                if (this.terminal) {
+                    this.terminal.write('\\r\\n\\r\\n[Connection Closed]');
+                }
+            };
+
+            this.webSocket.onerror = (error) => {
+                console.error('WebSocket Error: ', error);
+                if (this.terminal) {
+                    this.terminal.write('\\r\\n\\r\\n[Connection Error]');
+                }
+            };
+
+            // Send data from the terminal to the server
+            this.terminal.onData((data) => {
+                if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+                    this.webSocket.send(data);
+                }
+            });
+
+            // Handle terminal resize
+            const resizeObserver = new ResizeObserver(() => {
+                this.fitAddon.fit();
+                const { cols, rows } = this.terminal;
+                if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+                    this.webSocket.send(JSON.stringify({ type: 'resize', cols, rows }));
+                }
+            });
+            resizeObserver.observe(terminalContainer);
         }
     }
 

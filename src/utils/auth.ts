@@ -22,10 +22,22 @@ import { FastifyRequest, FastifyReply } from 'fastify';
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   try {
-    // This method is added by the @fastify/jwt plugin.
-    // It automatically reads the token from the Authorization header,
-    // verifies it, and decorates the request object with the decoded payload.
-    await request.jwtVerify();
+    let token: string | null = null;
+    if (request.headers.authorization) {
+      const parts = request.headers.authorization.split(' ');
+      if (parts.length === 2 && parts[0] === 'Bearer') {
+        token = parts[1];
+      }
+    } else if (request.query && (request.query as any).token) {
+      token = (request.query as any).token;
+    }
+
+    if (!token) {
+      throw new Error('No token provided');
+    }
+
+    const decoded = await request.server.jwt.verify(token);
+    request.user = decoded as any; // Manually decorate the request
   } catch (err) {
     // If verification fails, send an unauthorized error.
     reply.code(401).send(err);
