@@ -1,0 +1,64 @@
+/* Custom styles for Ultimate VPS */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-online { background-color: #10B981; }
+.status-offline { background-color: #EF4444; }
+.status-warning { background-color: #F59E0B; }
+
+.port-card {
+    background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+    border: 1px solid #374151;
+    transition: all 0.3s ease;
+}
+
+.port-card:hover {
+    border-color: #60A5FA;
+    transform: translateY(-2px);
+}
+
+.gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.pulse { animation: pulse 2s infinite; }
+
+/* Loading animation */
+.loader {
+    border: 3px solid #374151;
+    border-top: 3px solid #60A5FA;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/*
+ * Web Console / Xterm.js specific styles
+ */
+#terminal {
+    height: 450px; /* A fixed height for the terminal container */
+    padding: 10px; /* Padding inside the terminal container */
+    overflow: hidden; /* Hide any overflow from the container itself */
+    resize: vertical; /* Allow vertical resizing */
+}
+
+/* Ensure the xterm viewport fills our container */
+#terminal .xterm-viewport {
+    width: 100% !important; /* Override any inline styles if necessary */
+}

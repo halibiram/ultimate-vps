@@ -1,0 +1,6 @@
+=== Ultimate Server Setup Script ===
+Target Level: ULTIMATE
+Sensitive Hosts for SNI: whatsapp.com,web.whatsapp.com,whatsapp.net,signal.org,telegram.org,facebook.com,instagram.com,twitter.com
+System Profile: 2GB RAM + 4GB Swap Optimized
+==========================================
+[0;34m[INFO][0m [1/13] Configuring swap space...

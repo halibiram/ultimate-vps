@@ -213,7 +213,7 @@ install_dependencies() {
         gnupg lsb-release jq htop iftop zip unzip nano vim resolvconf \
         dnsutils iputils-ping traceroute mtr-tiny tcpdump socat netcat \
         openssh-server openssh-client rsync cron logrotate sysstat \
-        iotop ethtool php-fpm apache2-utils
+        iotop ethtool php-fpm apache2-utils stunnel4 dropbear
 
     # Install Python packages
     pip3 install --upgrade pip

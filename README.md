@@ -1,90 +1,181 @@
-# Ultimate Server Setup Script
+# Ultimate VPS SSH Manager
 
-This script is designed to automate the setup and configuration of a robust server environment on Debian-based Linux distributions. It installs and configures essential services for hosting, VPN, and security, making it ideal for a personal all-in-one server.
+A web-based application to manage users and their SSH accounts on a Virtual Private Server (VPS). It provides a simple, modern interface to create, update, and monitor SSH accounts, manage Stunnel, and view real-time server statistics.
 
-The script is optimized for servers with at least 2GB of RAM and will automatically create and configure a swap file to ensure stable performance.
+The application is built with a **TypeScript** backend using **Fastify** and **Prisma**, and a vanilla **JavaScript** frontend.
 
 ## 🚀 Features
 
-- **System Optimization:**
-  - **Swap Management:** Automatically creates a 4GB swap file, ideal for systems with 2GB of RAM, and optimizes swappiness settings.
-  - **Performance Tuning:** Applies advanced `sysctl` configurations to optimize network and kernel performance, including enabling BBR congestion control.
-  - **Resource Limits:** Increases system-wide file descriptor and process limits for better scalability.
+- **Secure User Authentication:** JWT-based authentication system for protecting administrative actions.
+- **Initial Admin Setup:** A one-time, secure endpoint for registering the primary admin user.
+- **Full SSH Account Management:**
+    - **Create:** Add new system users with passwords, expiry dates, and login limits.
+    - **View:** See a list of all SSH accounts with their status and number of active connections.
+    - **Toggle:** Activate or deactivate accounts, which locks or unlocks the system user.
+    - **Delete:** Remove SSH accounts from both the database and the operating system.
+- **Stunnel Integration:**
+    - **Enable/Disable Stunnel:** Easily enable or disable Stunnel to wrap SSH connections in SSL, helping to bypass restrictive firewalls.
+    - **Status Check:** View the current status of the Stunnel service.
+- **Dropbear Integration:**
+    - **Enable/Disable Dropbear:** Easily enable or disable the lightweight Dropbear SSH server as an alternative to OpenSSH.
+    - **Status Check:** View the current status of the Dropbear service.
+- **Real-Time Server Monitoring:**
+    - **System Stats:** View live CPU, RAM, and disk usage.
+    - **Network Status:** Monitor active connections on key ports (e.g., SSH, Dropbear).
+- **Web-based UI:** A simple and intuitive single-page application for managing the server.
+- **Modern Tech Stack:** Powered by Fastify, Prisma, TypeScript, and vanilla JavaScript for a fast and reliable experience.
 
-- **Essential Services:**
-  - **Docker Engine:** Installs and configures Docker and Containerd for easy application deployment.
-  - **Nginx Web Server:** Sets up Nginx with a secure and optimized default configuration.
-  - **SNI Proxying:** Includes a basic Nginx setup to proxy traffic for specific hostnames, which can be adapted for traffic obfuscation.
+## Project Structure
 
-- **VPN Services:**
-  - **WireGuard:** Deploys `wg-easy`, a user-friendly WireGuard server with a web UI for easy client management.
-  - **OpenVPN:** Deploys a standard OpenVPN server using the `kylemanna/openvpn` Docker image.
-  - **SSH VPN Tunnel:** Configures the SSH server to allow tunneling on port 443, providing a simple and effective VPN alternative.
+The repository is organized into a `src` directory for the backend source code, a `public` directory for the frontend, and `prisma` for database management.
 
-- **Security & Hardening:**
-  - **UFW Firewall:** Configures a strict firewall with rules to allow only essential traffic (SSH, HTTP/S, VPN ports).
-  - **Fail2ban:** Installs and configures Fail2ban to protect SSH and Nginx from brute-force attacks.
-  - **Kernel Hardening:** Applies security-focused `sysctl` settings to protect against common network-level threats.
-
-- **Monitoring & Maintenance:**
-  - **Netdata:** Installs Netdata for real-time performance monitoring with a lightweight configuration.
-  - **Custom Monitoring Script:** Provides a `vpn-monitor` command for a quick overview of server status (CPU, RAM, disk, active connections).
-  - **Automated Backups:** Sets up a daily cron job to back up critical configuration files for Nginx, VPNs, and SSH.
-
-## 🛠️ Installation
-
-To use the script, download it to your server, make it executable, and run it with `sudo` privileges.
-
-```bash
-# Download the script
-wget https://raw.githubusercontent.com/your-username/your-repo/main/setup.sh
-
-# Make it executable
-chmod +x setup.sh
-
-# Run with root privileges
-sudo ./setup.sh
+```
+.
+├── public/               # Frontend assets (HTML, CSS, JS)
+│   ├── css/
+│   │   └── dashboard.css
+│   ├── js/
+│   │   └── dashboard.js  # Main frontend application logic
+│   └── index.html        # The single-page application entry point
+├── src/                  # Backend TypeScript source code
+│   ├── controllers/      # Request handlers and business logic
+│   ├── routes/           # API route definitions (Fastify plugins)
+│   ├── services/         # Services that interact with external resources (e.g., shell)
+│   ├── utils/            # Utility functions (e.g., authentication middleware)
+│   └── server.ts         # Main server entry point
+├── prisma/               # Prisma schema and migrations
+│   └── schema.prisma
+├── .env.example          # Example environment variables
+├── package.json
+└── tsconfig.json
 ```
 
-The script will proceed automatically and requires no user input.
+## Getting Started
 
-## 📄 Post-Installation Guide
+These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
 
-After the script completes, your server will be fully configured. Here is the key information you'll need:
+### Prerequisites
 
-- **Server IP:** The script will display your server's public IP address upon completion.
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [npm](https://www.npmjs.com/)
+- [PostgreSQL](https://www.postgresql.org/)
+- [Stunnel](https://www.stunnel.org/) (v5 or higher) installed on the server.
+- [Dropbear](https://matt.ucc.asn.au/dropbear/dropbear.html) SSH server installed on the server.
+- `sudo` access for the user running the application, to manage system users and services.
 
-- **Accessing Services:**
-  - **SSH:** Connect as usual on port `22`.
+### Installation
+
+1.  **Clone the repository:**
     ```bash
-    ssh your-user@your_server_ip
+    git clone https://github.com/your-username/your-repo.git
+    cd your-repo
     ```
-  - **SSH VPN Tunnel:** Use port `443` to create a SOCKS5 proxy.
-    ```bash
-    ssh -p 443 -D 1080 your-user@your_server_ip
-    ```
-  - **WireGuard Web UI:** Access the admin interface to add clients and manage connections.
-    - **URL:** `http://your_server_ip:51821`
-    - **Password:** The password is randomly generated and can be found in the Docker container logs: `docker logs wg-easy`
-  - **Netdata Monitoring:** View real-time server metrics.
-    - **URL:** `http://your_server_ip:19999`
 
-- **Important Commands:**
-  - **Check Server Status:** Get a quick performance summary.
+2.  **Install dependencies:**
     ```bash
-    vpn-monitor
+    npm install
     ```
-  - **Manage Services:** Use `systemctl` to control the key services.
-    ```bash
-    sudo systemctl status docker nginx ssh fail2ban
-    sudo systemctl restart nginx
-    ```
-  - **View Logs:**
-    - **System Log:** `tail -f /var/log/syslog`
-    - **Monitoring Log:** `cat /var/log/vpn-monitor.log`
-    - **Backup Log:** `cat /var/log/backup.log`
 
-- **Backup Files:**
-  - Configuration backups are stored in `/backup/config/`.
-  - Log backups are stored in `/backup/logs/`.
-  - The backup script is located at `/opt/backup-scripts/backup-vpn.sh`.
+3.  **Set up the environment:**
+    - Create a `.env` file in the root of the project (you can copy `.env.example`).
+    - Add your PostgreSQL connection string, a JWT secret, and a Redis URL to the `.env` file:
+      ```env
+      DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
+      JWT_SECRET="your-super-secret-key"
+      REDIS_URL="redis://localhost:6379"
+      ```
+    - **Note:** The `JWT_SECRET` should be a long, random, and secret string.
+
+4.  **Run database migrations:**
+    ```bash
+    npx prisma migrate dev
+    ```
+
+5.  **Install Stunnel & Dropbear:**
+    The Stunnel and Dropbear features require `stunnel4` and `dropbear` to be installed on the server. You can install them on Debian-based systems with:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install stunnel4 dropbear
+    ```
+
+6.  **Configure `sudo` access (Production):**
+    For the application to manage system users and Stunnel, the user running the Node.js process needs passwordless `sudo` access for several commands. Create a file `/etc/sudoers.d/ultimate-vps` and add the following lines, replacing `your-node-user` with the actual user running the application:
+    ```
+    your-node-user ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /bin/systemctl, /usr/bin/openssl, /bin/tee, /usr/bin/sed
+    ```
+
+## Usage
+
+-   **Run in development mode (with hot-reloading):**
+    ```bash
+    npm run dev
+    ```
+-   **Build for production:**
+    ```bash
+    npm run build
+    ```
+-   **Start the production server:**
+    ```bash
+    npm run start
+    ```
+
+After starting the server, navigate to `http://localhost:3000` in your browser. The first step is to register an admin user via the API.
+
+## API Documentation
+
+All API endpoints are prefixed with `/api`.
+
+### Authentication (`/auth`)
+
+| Method | Endpoint              | Description                                                              | Authentication |
+| :----- | :-------------------- | :----------------------------------------------------------------------- | :------------- |
+| `POST` | `/register-admin`     | Creates the first and only admin user. Intended for initial setup.       | None           |
+| `POST` | `/login`              | Authenticates a user and returns a JWT.                                  | None           |
+
+### SSH Account Management (`/ssh`)
+
+**Note:** All SSH routes require a valid JWT.
+
+| Method    | Endpoint                | Description                                        | Authentication |
+| :-------- | :---------------------- | :------------------------------------------------- | :------------- |
+| `GET`     | `/accounts`             | Retrieves a list of all SSH accounts.              | Required       |
+| `POST`    | `/create`               | Creates a new SSH account.                         | Required       |
+| `PATCH`   | `/toggle/:username`     | Toggles the active status of an account.           | Required       |
+| `DELETE`  | `/delete/:username`     | Deletes an SSH account.                            | Required       |
+
+### Server Statistics (`/stats`)
+
+**Note:** All stats routes require a valid JWT.
+
+| Method | Endpoint | Description                                       | Authentication |
+| :----- | :------- | :------------------------------------------------ | :------------- |
+| `GET`  | `/server`  | Retrieves real-time server stats (CPU, RAM, Disk). | Required       |
+| `GET`  | `/ports`   | Retrieves the status of monitored network ports.  | Required       |
+
+### Stunnel Management (`/stunnel`)
+
+**Note:** All Stunnel routes require a valid JWT.
+
+| Method | Endpoint  | Description                               | Authentication |
+| :----- | :-------- | :---------------------------------------- | :------------- |
+| `GET`  | `/status` | Gets the current status of Stunnel.       | Required       |
+| `POST` | `/enable` | Enables the Stunnel service.              | Required       |
+| `POST` | `/disable`| Disables the Stunnel service.             | Required       |
+
+### Dropbear Management (`/dropbear`)
+
+**Note:** All Dropbear routes require a valid JWT.
+
+| Method | Endpoint  | Description                               | Authentication |
+| :----- | :-------- | :---------------------------------------- | :------------- |
+| `GET`  | `/status` | Gets the current status of Dropbear.      | Required       |
+| `POST` | `/enable` | Enables the Dropbear service.             | Required       |
+| `POST` | `/disable`| Disables the Dropbear service.            | Required       |
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a pull request or open an issue.
+
+---
+
+This project is licensed under the MIT License.
