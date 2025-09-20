@@ -51,7 +51,7 @@ async function start() {
         // Register Fastify plugins
         await fastify.register(cors_1.default, { origin: true }); // Allow all origins for simplicity
         await fastify.register(jwt_1.default, { secret: process.env.JWT_SECRET });
-        // await fastify.register(redis, { url: process.env.REDIS_URL as string });
+        // await fastify.register(redis, { url: process.env.REDIS_URL as string }); // Temporarily disabled for login test
         await fastify.register(websocket_1.default);
         // Serve the frontend static files from the 'public' directory
         await fastify.register(static_1.default, {

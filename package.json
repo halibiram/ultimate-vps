@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest",
+    "test:e2e": "playwright test",
+    "test:seed": "ts-node prisma/seed-test-user.ts",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
@@ -37,6 +39,7 @@
     "winston": "3.11.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/bcryptjs": "2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "20.8.10",
