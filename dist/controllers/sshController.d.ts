@@ -1,71 +1,57 @@
 /**
- * @file Manages the business logic for SSH account operations.
- *
- * This controller handles creating, retrieving, updating, and deleting SSH accounts.
- * It orchestrates interactions between the database (via Prisma) and the underlying
- * operating system (via `SSHService`). It also instantiates and shares a single
- * instance of the Prisma Client and the SSHService for use in its functions.
+ * @file Manages the business logic for all SSH account operations.
+ * @description This controller orchestrates the creation, retrieval, modification, and deletion
+ * of SSH accounts by coordinating between the database (Prisma) and the underlying
+ * operating system commands (via `SSHService`).
  */
 import { FastifyRequest, FastifyReply } from 'fastify';
 /**
- * Retrieves all SSH accounts from the database and enriches them with live data.
+ * Retrieves a comprehensive list of all SSH accounts.
+ * This function fetches all SSH account records from the database and enriches each
+ * record with the real-time number of active connections for that user, obtained
+ * from the `SSHService`.
  *
- * This function fetches all SSH account records and, for each account, it calls
- * the `SSHService` to get the number of active system connections for that user.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply containing
- * an array of SSH account objects, each enriched with an `activeConnections` count.
+ * @param {FastifyRequest} request The Fastify request object.
+ * @param {FastifyReply} reply The Fastify reply object, used to send the list of accounts.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 200 status with an array of SSH account objects, each including an `activeConnections` count. On failure, it returns a 500 status.
  */
 export declare function getSshAccounts(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply>;
 /**
- * Creates a new SSH account, which includes creating a system user and a database record.
+ * Creates a new SSH account, including a system user and a database record.
+ * This function performs a transactional operation: it first creates the system user
+ * via `SSHService`. If successful, it creates a corresponding record in the database.
+ * If the database operation fails, it attempts to roll back the system user creation.
  *
- * It follows a two-step process:
- * 1. Create the system user using `SSHService`.
- * 2. If successful, create a corresponding record in the database.
- * If the database insertion fails, it attempts to roll back by deleting the created system user.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {object} request.body - The request body.
- * @param {string} request.body.username - The username for the new SSH account.
+ * @param {FastifyRequest<{ Body: { username: string; password: string; expiryDate: string; maxLogin?: number } }>} request The Fastify request object, containing the new account details.
+ * @param {string} request.body.username - The username for the new account.
  * @param {string} request.body.password - The password for the new account.
- * @param {string} request.body.expiryDate - The expiration date for the account (ISO 8601 format).
- * @param {number} [request.body.maxLogin=1] - The maximum number of simultaneous logins.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply, containing
- * the newly created SSH account object on success.
+ * @param {string} request.body.expiryDate - The expiration date in ISO 8601 format.
+ * @param {number} [request.body.maxLogin=1] - The maximum number of simultaneous logins allowed.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it returns a 201 status with the newly created SSH account object. On failure, it returns an appropriate error status (e.g., 400, 409, 500).
  */
 export declare function createSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply>;
 /**
- * Toggles the active status of an SSH account.
+ * Toggles the active status of an SSH account (active/inactive).
+ * This function updates both the system user's account status (by locking or
+ * unlocking it) and the `isActive` flag in the database.
  *
- * This function finds an SSH account by its username, determines the new status
- * (active -> inactive, or inactive -> active), and then updates both the system
- * user (by locking or unlocking the account) and the database record.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {object} request.params - The URL parameters.
+ * @param {FastifyRequest<{ Params: { username: string } }>} request The Fastify request object, containing the username in the URL parameters.
  * @param {string} request.params.username - The username of the account to toggle.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply, containing
- * the updated SSH account object on success.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 200 status with the updated SSH account object. On failure, it returns an appropriate error status (e.g., 404, 500).
  */
 export declare function toggleSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply>;
 /**
- * Deletes an SSH account from both the database and the operating system.
+ * Deletes an SSH account from both the system and the database.
+ * This function first removes the account from the database. If that is successful,
+ * it proceeds to delete the corresponding system user. This order prevents orphaned
+ * database records in case the system user deletion fails.
  *
- * It first deletes the account from the database. If successful, it proceeds
- * to delete the corresponding system user. This order ensures that if the system
- * user deletion fails, we don't have an orphaned database record.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {object} request.params - The URL parameters.
- * @param {string} request.params.username - The username of the account to delete.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success,
- * it sends a 204 No Content response.
+ * @param {FastifyRequest<{ Params: { username: string } }>} request The Fastify request object, containing the username to delete.
+ * @param {string} request.params.username - The username of the account to be deleted.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 204 No Content response. On failure, it returns an appropriate error status (e.g., 404, 500).
  */
 export declare function deleteSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply>;
 //# sourceMappingURL=sshController.d.ts.map

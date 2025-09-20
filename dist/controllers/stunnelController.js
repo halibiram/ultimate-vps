@@ -1,20 +1,23 @@
 "use strict";
+/**
+ * @file Manages the business logic for the Stunnel service.
+ * @description This controller handles enabling, disabling, and checking the status of Stunnel,
+ * which provides an SSL wrapper for SSH connections. It uses the `StunnelService`
+ * to interact with the underlying system service.
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getStunnelStatus = exports.disableStunnel = exports.enableStunnel = void 0;
 const stunnelService_1 = require("../services/stunnelService");
 const stunnelService = new stunnelService_1.StunnelService();
 const STUNNEL_PORT = 443; // The default port for Stunnel, can be made configurable later.
 /**
- * @controller enableStunnel
- * Handles the API request to enable the Stunnel service.
+ * Enables the Stunnel service on a predefined port.
+ * This function calls the `StunnelService` to configure and start the Stunnel
+ * process, creating an SSH-over-SSL tunnel.
  *
- * It calls the `StunnelService` to configure and start Stunnel on a predefined port.
- * This provides a simple, one-click way to activate the SSH-over-SSL tunnel.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply,
- * indicating success or failure.
+ * @param {FastifyRequest} request The Fastify request object.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 200 status with a success message. On failure, it returns a 500 status.
  */
 async function enableStunnel(request, reply) {
     try {
@@ -33,16 +36,13 @@ async function enableStunnel(request, reply) {
 }
 exports.enableStunnel = enableStunnel;
 /**
- * @controller disableStunnel
- * Handles the API request to disable the Stunnel service.
+ * Disables the Stunnel service.
+ * This function calls the `StunnelService` to stop the Stunnel process. It does
+ * not automatically restore the original SSH daemon configuration as a safety measure.
  *
- * It calls the `StunnelService` to stop the Stunnel process. As a safety measure,
- * it does not automatically re-enable the SSH daemon on the port that Stunnel was using.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply,
- * indicating success or failure.
+ * @param {FastifyRequest} request The Fastify request object.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 200 status with a success message. On failure, it returns a 500 status.
  */
 async function disableStunnel(request, reply) {
     try {
@@ -61,16 +61,13 @@ async function disableStunnel(request, reply) {
 }
 exports.disableStunnel = disableStunnel;
 /**
- * @controller getStunnelStatus
- * Handles the API request to retrieve the current status of the Stunnel service.
+ * Retrieves the current operational status of the Stunnel service.
+ * This function is used by the frontend to display whether Stunnel is currently
+ * active or inactive.
  *
- * This function is essential for the frontend to determine whether to show
- * "Enable" or "Disable" controls to the user.
- *
- * @param {FastifyRequest} request - The Fastify request object.
- * @param {FastifyReply} reply - The Fastify reply object.
- * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply,
- * containing an `isActive` boolean property.
+ * @param {FastifyRequest} request The Fastify request object.
+ * @param {FastifyReply} reply The Fastify reply object.
+ * @returns {Promise<FastifyReply>} A promise that resolves to the Fastify reply. On success, it sends a 200 status with an object containing an `isActive` boolean property. On failure, it returns a 500 status.
  */
 async function getStunnelStatus(request, reply) {
     try {

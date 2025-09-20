@@ -1,19 +1,17 @@
 /**
- * @file Defines and registers the routes for fetching server statistics.
- *
- * This file creates a Fastify plugin for all statistics-related endpoints.
- * All routes defined here are protected by the `authenticate` hook, ensuring
- * that only authenticated users can access them.
+ * @file Defines and registers API routes for fetching server statistics.
+ * @description This file creates a Fastify plugin that groups all statistics-related
+ * endpoints. All routes are protected by the `authenticate` hook.
  */
 import { FastifyInstance } from 'fastify';
 /**
- * A Fastify plugin that registers routes for fetching server statistics.
- *
- * It applies the `authenticate` hook to all routes within this plugin,
- * protecting them from unauthorized access.
+ * Encapsulates and registers the server statistics routes.
+ * This plugin applies the `authenticate` hook to all its routes, ensuring that
+ * only authenticated users can access server and port statistics.
  *
  * @param {FastifyInstance} fastify - The Fastify server instance.
- * @returns {Promise<void>}
+ * @param {object} options - Plugin options, not used here.
+ * @param {Function} done - Callback to signal completion of plugin registration.
  */
 export declare function statsRoutes(fastify: FastifyInstance): Promise<void>;
 //# sourceMappingURL=stats.d.ts.map

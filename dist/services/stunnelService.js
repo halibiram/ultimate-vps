@@ -1,15 +1,44 @@
 "use strict";
+/**
+ * @file Provides an abstraction layer for managing the Stunnel service.
+ * @description This service class encapsulates the shell commands required to enable,
+ * disable, and check the status of Stunnel, which provides an SSL/TLS wrapper for
+ * other services like SSH.
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StunnelService = void 0;
 const child_process_1 = require("child_process");
 const util_1 = require("util");
+const fs = __importStar(require("fs/promises"));
 const execAsync = (0, util_1.promisify)(child_process_1.exec);
 /**
  * @class StunnelService
- *
- * A service class for managing the Stunnel service, which is used to wrap
- * SSH connections in SSL/TLS. This is useful for bypassing firewalls that
- * might block standard SSH ports.
+ * @description Manages the Stunnel service by executing shell commands. This includes
+ * generating certificates, creating configuration files, and controlling the
+ * `stunnel4` system service.
  */
 class StunnelService {
     stunnelConfigPath = '/etc/stunnel/stunnel.conf';
@@ -20,11 +49,10 @@ class StunnelService {
      * traffic to the local SSH server (port 22).
      *
      * This method performs several critical actions:
-     * 1. It ensures that the SSH server itself is not configured to listen on the
-     *    target port, preventing a port conflict.
-     * 2. It generates a new self-signed SSL certificate for Stunnel to use.
-     * 3. It creates the Stunnel configuration file.
-     * 4. It ensures the Stunnel daemon is enabled to start on boot.
+     * 1. It ensures the SSH server is not listening on the target port to prevent conflicts.
+     * 2. It generates a new self-signed SSL certificate for Stunnel.
+     * 3. It creates the Stunnel configuration file (`/etc/stunnel/stunnel.conf`).
+     * 4. It enables the Stunnel daemon to start on boot (`/etc/default/stunnel4`).
      * 5. It starts or restarts the Stunnel service to apply the changes.
      *
      * @param {number} port - The external port for Stunnel to listen on (e.g., 443).
@@ -35,13 +63,14 @@ class StunnelService {
         try {
             // Step 1: Ensure sshd is not listening on the target port to avoid conflict.
             await this.updateSshdConfig(port, false);
+            // Step 1.5: Create the stunnel directory
+            await execAsync('sudo mkdir -p /etc/stunnel');
             // Step 2: Generate a self-signed certificate for Stunnel.
             await execAsync(`sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 ` +
                 `-keyout /etc/stunnel/stunnel.pem -out /etc/stunnel/stunnel.pem ` +
                 `-subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=localhost"`);
             // Step 3: Create the Stunnel configuration file.
-            const config = `
-pid = /var/run/stunnel4/stunnel.pid
+            const config = `pid = /var/run/stunnel4/stunnel.pid
 output = /var/log/stunnel4/stunnel.log
 cert = /etc/stunnel/stunnel.pem
 client = no
@@ -49,10 +78,15 @@ client = no
 [ssh-ssl]
 accept = ${port}
 connect = 127.0.0.1:22
-            `.trim();
-            await execAsync(`echo '${config}' | sudo tee ${this.stunnelConfigPath}`);
+`;
+            const tempConfigPath = '/tmp/stunnel.conf';
+            await fs.writeFile(tempConfigPath, config.trim());
+            await execAsync(`sudo mv ${tempConfigPath} ${this.stunnelConfigPath}`);
             // Step 4: Ensure the Stunnel daemon is enabled.
-            await execAsync(`sudo sed -i 's/ENABLED=0/ENABLED=1/' ${this.stunnelDefaultFilePath}`);
+            const stunnelDefaultContent = 'ENABLED=1';
+            const tempStunnelDefaultPath = '/tmp/stunnel4';
+            await fs.writeFile(tempStunnelDefaultPath, stunnelDefaultContent);
+            await execAsync(`sudo mv ${tempStunnelDefaultPath} ${this.stunnelDefaultFilePath}`);
             // Step 5: Start or restart the Stunnel service.
             await execAsync('sudo systemctl restart stunnel4');
             console.log(`Stunnel enabled successfully on port ${port}`);
@@ -64,11 +98,12 @@ connect = 127.0.0.1:22
         }
     }
     /**
-     * Disables the Stunnel service and optionally restores the SSH server's
-     * configuration to listen on the port that Stunnel was using.
+     * Disables the Stunnel service.
+     * This method stops the `stunnel4` system service. It can optionally restore the
+     * SSH server's configuration to listen on the port that Stunnel was previously using.
      *
-     * @param {number} port - The port Stunnel was configured to use.
-     * @param {boolean} restoreSshd - If `true`, the SSH server will be configured
+     * @param {number} port - The port that Stunnel was configured to use.
+     * @param {boolean} restoreSshd - If `true`, the SSH server will be reconfigured
      * to listen on the specified port after Stunnel is disabled.
      * @returns {Promise<boolean>} A promise that resolves to `true` if Stunnel was
      * disabled successfully, and `false` otherwise.
@@ -91,9 +126,11 @@ connect = 127.0.0.1:22
     }
     /**
      * Checks if the Stunnel service is currently active and running.
+     * Uses `systemctl is-active` to determine the service status.
      *
      * @returns {Promise<boolean>} A promise that resolves to `true` if the service
-     * is active, and `false` otherwise.
+     * is active, and `false` otherwise (including if the service is inactive, failed,
+     * or not found).
      */
     async isStunnelActive() {
         try {
@@ -107,12 +144,12 @@ connect = 127.0.0.1:22
     }
     /**
      * Modifies the SSH server's configuration file (`sshd_config`) to either add
-     * or remove a `Port` directive. It restarts the SSH service to apply the change.
+     * or remove a `Port` directive, then restarts the SSH service.
      *
      * @private
-     * @param {number} port - The port number to add or remove.
-     * @param {boolean} listen - If `true`, the `Port` directive is added. If `false`, it's removed.
-     * @returns {Promise<void>}
+     * @param {number} port - The port number to add or remove from the `sshd_config`.
+     * @param {boolean} listen - If `true`, the `Port ${port}` directive is added. If `false`, it is removed.
+     * @returns {Promise<void>} A promise that resolves once the operation is complete.
      */
     async updateSshdConfig(port, listen) {
         const config = await execAsync(`sudo cat ${this.sshdConfigPath}`);
