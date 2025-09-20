@@ -54,7 +54,21 @@ The repository is organized into a `src` directory for the backend source code, 
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
 
-### Prerequisites
+### Automated Setup on Ubuntu
+
+For a fast and easy setup on a fresh Ubuntu server, you can use the provided setup script. This will install all dependencies, configure the database, and set up the application to run as a service.
+
+```bash
+# Make sure the script is executable
+chmod +x ubuntu_setup.sh
+
+# Run the script as root
+sudo ./ubuntu_setup.sh
+```
+
+This is the recommended method for deploying the application on a new server. For manual installation, follow the steps below.
+
+### Manual Installation Prerequisites
 
 - [Node.js](https://nodejs.org/) (v16 or higher)
 - [npm](https://www.npmjs.com/)
