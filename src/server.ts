@@ -20,6 +20,7 @@ import { statsRoutes } from './routes/stats';
 import { stunnelRoutes } from './routes/stunnel';
 import { dropbearRoutes } from './routes/dropbear';
 import { webConsoleRoutes } from './routes/webConsole';
+import { v2rayRoutes } from './routes/v2ray';
 
 /**
  * Extends the FastifyJWT interface to include a custom `user` payload.
@@ -83,6 +84,7 @@ async function start(): Promise<void> {
     await fastify.register(stunnelRoutes, { prefix: '/api/stunnel' });
     await fastify.register(dropbearRoutes, { prefix: '/api/dropbear' });
     await fastify.register(webConsoleRoutes, { prefix: '/api/web-console' });
+    await fastify.register(v2rayRoutes, { prefix: '/api/v2ray' });
 
     // A simple health check endpoint to confirm the server is running.
     fastify.get('/health', async () => {

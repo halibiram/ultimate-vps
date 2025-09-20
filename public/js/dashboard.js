@@ -66,6 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Dropbear management buttons
             document.getElementById('enableDropbearBtn').addEventListener('click', () => this.handleEnableDropbear());
             document.getElementById('disableDropbearBtn').addEventListener('click', () => this.handleDisableDropbear());
+
+            // V2Ray management buttons
+            document.getElementById('installV2RayBtn').addEventListener('click', () => this.handleInstallV2Ray());
+            document.getElementById('uninstallV2RayBtn').addEventListener('click', () => this.handleUninstallV2Ray());
+            document.getElementById('enableV2RayBtn').addEventListener('click', () => this.handleEnableV2Ray());
+            document.getElementById('disableV2RayBtn').addEventListener('click', () => this.handleDisableV2Ray());
         }
 
         /**
@@ -168,7 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.loadPortStatus(),
                 this.loadSSHAccounts(),
                 this.loadStunnelStatus(),
-                this.loadDropbearStatus()
+                this.loadDropbearStatus(),
+                this.loadV2RayStatus()
             ]);
         }
 
@@ -320,6 +327,108 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         /**
+         * Fetches the current status of the V2Ray service and updates the UI.
+         */
+        async loadV2RayStatus() {
+            try {
+                const data = await this.apiFetch('/api/v2ray/status');
+                const status = data.status;
+                const statusDiv = document.getElementById('v2rayStatus');
+                const statusText = document.getElementById('v2rayStatusText');
+                const installBtn = document.getElementById('installV2RayBtn');
+                const uninstallBtn = document.getElementById('uninstallV2RayBtn');
+                const enableBtn = document.getElementById('enableV2RayBtn');
+                const disableBtn = document.getElementById('disableV2RayBtn');
+                const openPanelBtn = document.getElementById('openV2RayPanelBtn');
+
+                // Set the href for the open panel button
+                openPanelBtn.href = `http://${window.location.hostname}:54321`;
+
+                statusText.textContent = status;
+                installBtn.classList.add('hidden');
+                uninstallBtn.classList.add('hidden');
+                enableBtn.classList.add('hidden');
+                disableBtn.classList.add('hidden');
+                openPanelBtn.classList.add('hidden');
+
+                if (status === 'Not Installed') {
+                    statusDiv.className = 'status-indicator status-offline';
+                    installBtn.classList.remove('hidden');
+                } else if (status === 'Active') {
+                    statusDiv.className = 'status-indicator status-online';
+                    uninstallBtn.classList.remove('hidden');
+                    disableBtn.classList.remove('hidden');
+                    openPanelBtn.classList.remove('hidden');
+                } else if (status === 'Inactive') {
+                    statusDiv.className = 'status-indicator status-offline';
+                    uninstallBtn.classList.remove('hidden');
+                    enableBtn.classList.remove('hidden');
+                } else {
+                    statusDiv.className = 'status-indicator status-unknown';
+                }
+            } catch (error) {
+                console.error('Failed to load V2Ray status:', error);
+                document.getElementById('v2rayStatusText').textContent = 'Error';
+            }
+        }
+
+        /**
+         * Handles the request to install the V2Ray service.
+         */
+        async handleInstallV2Ray() {
+            if (confirm('Are you sure you want to install V2Ray (xray-ui)? This may take a few minutes.')) {
+                try {
+                    const result = await this.apiFetch('/api/v2ray/install', { method: 'POST' });
+                    alert(result.message);
+                    this.loadV2RayStatus();
+                } catch (error) {
+                    alert('Failed to install V2Ray: ' + error.message);
+                }
+            }
+        }
+
+        /**
+         * Handles the request to uninstall the V2Ray service.
+         */
+        async handleUninstallV2Ray() {
+            if (confirm('Are you sure you want to uninstall V2Ray (xray-ui)? This will remove all data.')) {
+                try {
+                    const result = await this.apiFetch('/api/v2ray/uninstall', { method: 'POST' });
+                    alert(result.message);
+                    this.loadV2RayStatus();
+                } catch (error) {
+                    alert('Failed to uninstall V2Ray: ' + error.message);
+                }
+            }
+        }
+
+        /**
+         * Handles the request to enable the V2Ray service.
+         */
+        async handleEnableV2Ray() {
+            try {
+                const result = await this.apiFetch('/api/v2ray/enable', { method: 'POST' });
+                alert(result.message);
+                this.loadV2RayStatus();
+            } catch (error) {
+                alert('Failed to enable V2Ray: ' + error.message);
+            }
+        }
+
+        /**
+         * Handles the request to disable the V2Ray service.
+         */
+        async handleDisableV2Ray() {
+            try {
+                const result = await this.apiFetch('/api/v2ray/disable', { method: 'POST' });
+                alert(result.message);
+                this.loadV2RayStatus();
+            } catch (error) {
+                alert('Failed to disable V2Ray: ' + error.message);
+            }
+        }
+
+        /**
          * Starts a polling interval to periodically refresh the server stats and port status.
          * This provides a real-time feel for the dashboard's monitoring features.
          */
@@ -341,23 +450,24 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const status = await this.apiFetch('/api/stunnel/status');
                 const stunnelStatusDiv = document.getElementById('stunnelStatus');
+                const stunnelStatusText = document.getElementById('stunnelStatusText');
                 const enableBtn = document.getElementById('enableStunnelBtn');
                 const disableBtn = document.getElementById('disableStunnelBtn');
 
                 if (status.isActive) {
-                    stunnelStatusDiv.textContent = 'Active';
                     stunnelStatusDiv.className = 'status-indicator status-online';
+                    stunnelStatusText.textContent = 'Active';
                     enableBtn.classList.add('hidden');
                     disableBtn.classList.remove('hidden');
                 } else {
-                    stunnelStatusDiv.textContent = 'Inactive';
                     stunnelStatusDiv.className = 'status-indicator status-offline';
+                    stunnelStatusText.textContent = 'Inactive';
                     enableBtn.classList.remove('hidden');
                     disableBtn.classList.add('hidden');
                 }
             } catch (error) {
                 console.error('Failed to load Stunnel status:', error);
-                document.getElementById('stunnelStatus').textContent = 'Error';
+                document.getElementById('stunnelStatusText').textContent = 'Error';
             }
         }
 
