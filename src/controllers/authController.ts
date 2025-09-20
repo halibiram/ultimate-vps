@@ -5,7 +5,7 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { PrismaClient, User } from '@prisma/client';
+import { PrismaClient, User, Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -53,6 +53,11 @@ export async function registerAdmin(request: FastifyRequest, reply: FastifyReply
     return reply.code(201).send({ message: 'Admin user created successfully.', user: newUser });
   } catch (error: any) {
     console.error("Registration failed:", error);
+    if (error instanceof Prisma.PrismaClientInitializationError) {
+      return reply.code(500).send({
+        message: 'Database connection error. Please check server configuration.',
+      });
+    }
     // Prisma unique constraint violation code
     if (error.code === 'P2002') {
       return reply.code(409).send({ message: 'Username or email already exists.' });
@@ -103,9 +108,13 @@ export async function login(request: FastifyRequest, reply: FastifyReply): Promi
     const { password: _, ...userWithoutPassword } = user;
     return userWithoutPassword;
 
-  } catch (error)
-  {
+  } catch (error: any) {
     console.error("Login failed:", error);
+    if (error instanceof Prisma.PrismaClientInitializationError) {
+      return reply.code(500).send({
+        message: 'Database connection error. Please check server configuration.',
+      });
+    }
     return reply.code(500).send({ message: 'An error occurred during login.' });
   }
 }
