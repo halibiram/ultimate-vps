@@ -29,7 +29,7 @@ APP_INSTALL_DIR="/opt/ultimatevps"
 APP_SOURCE_DIR=$(pwd)
 DB_NAME="ultimatevps_db"
 DB_USER="ultimatevps_user"
-DB_PASS=$(openssl rand -base64 16 | node -p 'encodeURIComponent(require("fs").readFileSync(0, "utf-8").trim())') # Generate and URL-encode a random password
+DB_PASS=$(openssl rand -hex 16) # Generate a URL-safe random password
 
 # --- Main Setup Function ---
 main() {
