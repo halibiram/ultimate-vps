@@ -29,7 +29,8 @@ APP_INSTALL_DIR="/opt/ultimatevps"
 APP_SOURCE_DIR=$(pwd)
 DB_NAME="ultimatevps_db"
 DB_USER="ultimatevps_user"
-DB_PASS=$(openssl rand -base64 16) # Generate a random password
+DB_PASS_RAW=$(openssl rand -base64 16) # Generate a random password
+DB_PASS_ENCODED=$(echo -n "$DB_PASS_RAW" | node -p 'encodeURIComponent(require("fs").readFileSync(0, "utf-8").trim())')
 
 # --- Main Setup Function ---
 main() {
@@ -72,7 +73,7 @@ main() {
     print_status "Configuring PostgreSQL database..."
     systemctl enable --now postgresql
     sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" &>/dev/null
-    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" &>/dev/null
+    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS_RAW';" &>/dev/null
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" &>/dev/null
     print_success "PostgreSQL database '$DB_NAME' and user '$DB_USER' created."
 
@@ -86,7 +87,7 @@ main() {
     JWT_SECRET=$(openssl rand -base64 32)
     cat > "$APP_INSTALL_DIR/.env" << EOF
 # --- Database Configuration ---
-DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME"
+DATABASE_URL="postgresql://$DB_USER:$DB_PASS_ENCODED@localhost:5432/$DB_NAME"
 
 # --- Application Settings ---
 JWT_SECRET="$JWT_SECRET"
