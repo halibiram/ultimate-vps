@@ -71,6 +71,12 @@ main() {
     # 5. Configure PostgreSQL
     print_status "Configuring PostgreSQL database..."
     systemctl enable --now postgresql
+    # Terminate any active connections to the database to allow it to be dropped.
+    sudo -u postgres psql -c "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '$DB_NAME' AND pid <> pg_backend_pid();" &>/dev/null
+    # Drop user and database if they exist to ensure a clean slate
+    sudo -u postgres psql -c "DROP DATABASE IF EXISTS $DB_NAME;" &>/dev/null
+    sudo -u postgres psql -c "DROP USER IF EXISTS $DB_USER;" &>/dev/null
+    # Create the user and database
     sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" &>/dev/null
     sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" &>/dev/null
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" &>/dev/null
