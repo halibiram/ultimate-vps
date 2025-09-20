@@ -5,7 +5,8 @@
 #
 # This script automates the installation and configuration of the
 # Ultimate VPS SSH Manager application on a fresh Ubuntu server.
-# It follows the instructions from the README.md file.
+# It copies the project to /opt/ultimatevps to ensure correct
+# permissions and location-independent execution.
 #
 # =================================================================
 
@@ -23,12 +24,9 @@ print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # --- Configuration ---
-# The user that will run the application.
 APP_USER="ultimatevps"
-# The directory where the application will be cloned/copied.
-# Assumes the script is run from the project root.
-APP_DIR=$(pwd)
-# Database configuration
+APP_INSTALL_DIR="/opt/ultimatevps"
+APP_SOURCE_DIR=$(pwd)
 DB_NAME="ultimatevps_db"
 DB_USER="ultimatevps_user"
 DB_PASS=$(openssl rand -base64 16) # Generate a random password
@@ -52,39 +50,41 @@ main() {
         print_success "User '$APP_USER' created."
     fi
 
-    # 3. System Update and Dependency Installation
+    # 3. Prepare Application Directory
+    print_status "Setting up application directory at $APP_INSTALL_DIR..."
+    mkdir -p "$APP_INSTALL_DIR"
+    # Use rsync to copy files, which is generally better than cp
+    rsync -a --exclude='.git' --exclude='ubuntu_setup.sh' "$APP_SOURCE_DIR/" "$APP_INSTALL_DIR/"
+    chown -R "$APP_USER":"$APP_USER" "$APP_INSTALL_DIR"
+    print_success "Application files copied and permissions set."
+
+    # 4. System Update and Dependency Installation
     print_status "Updating system and installing dependencies..."
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get upgrade -y
-    # Install dependencies for Node.js repo
     apt-get install -y curl gnupg
-    # Add Node.js 20.x repository
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    # Install main dependencies
     apt-get install -y nodejs postgresql redis-server stunnel4 dropbear build-essential
     print_success "System dependencies installed."
 
-    # 4. Configure PostgreSQL
+    # 5. Configure PostgreSQL
     print_status "Configuring PostgreSQL database..."
     systemctl enable --now postgresql
-    # Use sudo -u postgres to execute commands as the 'postgres' user
     sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;" &>/dev/null
     sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" &>/dev/null
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO $DB_USER;" &>/dev/null
     print_success "PostgreSQL database '$DB_NAME' and user '$DB_USER' created."
 
-    # 5. Configure Redis
+    # 6. Configure Redis
     print_status "Configuring Redis..."
     systemctl enable --now redis-server
     print_success "Redis is running."
 
-    # 6. Set up Application Environment
-    print_status "Setting up Node.js application environment..."
-
-    # Create .env file
+    # 7. Set up Application Environment
+    print_status "Setting up Node.js application environment in $APP_INSTALL_DIR..."
     JWT_SECRET=$(openssl rand -base64 32)
-    cat > "$APP_DIR/.env" << EOF
+    cat > "$APP_INSTALL_DIR/.env" << EOF
 # --- Database Configuration ---
 DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME"
 
@@ -96,43 +96,40 @@ REDIS_URL="redis://localhost:6379"
 PORT=3000
 HOST="0.0.0.0"
 EOF
+    chown "$APP_USER":"$APP_USER" "$APP_INSTALL_DIR/.env"
     print_success ".env file created with generated credentials."
 
-    # Set ownership of project files to the app user
-    chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
-
-    # 7. Install Node Dependencies and Build Project (as APP_USER)
+    # 8. Install Node Dependencies and Build Project (as APP_USER)
     print_status "Installing npm packages and building the project..."
-    sudo -u "$APP_USER" -H -- bash -c "cd $APP_DIR && npm install"
+    sudo -u "$APP_USER" -H -- bash -c "cd $APP_INSTALL_DIR && npm install"
     if [ $? -ne 0 ]; then
         print_error "npm install failed. Please check for errors."
         exit 1
     fi
 
     print_status "Running Prisma migrations..."
-    sudo -u "$APP_USER" -H -- bash -c "cd $APP_DIR && npx prisma migrate deploy"
+    sudo -u "$APP_USER" -H -- bash -c "cd $APP_INSTALL_DIR && npx prisma migrate deploy"
     if [ $? -ne 0 ]; then
         print_error "Prisma migration failed. Please check the database connection and schema."
         exit 1
     fi
 
     print_status "Building TypeScript source..."
-    sudo -u "$APP_USER" -H -- bash -c "cd $APP_DIR && npm run build"
+    sudo -u "$APP_USER" -H -- bash -c "cd $APP_INSTALL_DIR && npm run build"
     if [ $? -ne 0 ]; then
         print_error "TypeScript build failed."
         exit 1
     fi
     print_success "Project built successfully."
 
-    # 8. Configure Sudoers for Service Commands
+    # 9. Configure Sudoers for Service Commands
     print_status "Configuring passwordless sudo for the application..."
-    # Commands needed by the application to manage users and services
     SUDOERS_FILE="/etc/sudoers.d/ultimate-vps"
     echo "$APP_USER ALL=(ALL) NOPASSWD: /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /bin/systemctl, /usr/bin/openssl, /bin/tee, /usr/bin/sed" > "$SUDOERS_FILE"
     chmod 0440 "$SUDOERS_FILE"
     print_success "Sudoers file created at $SUDOERS_FILE."
 
-    # 9. Create systemd Service
+    # 10. Create systemd Service
     print_status "Creating systemd service to run the application..."
     SYSTEMD_FILE="/etc/systemd/system/ultimate-vps.service"
     cat > "$SYSTEMD_FILE" << EOF
@@ -143,25 +140,24 @@ After=network.target postgresql.service redis-server.service
 [Service]
 User=$APP_USER
 Group=$APP_USER
-WorkingDirectory=$APP_DIR
+WorkingDirectory=$APP_INSTALL_DIR
 ExecStart=$(which npm) run start
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
-StandardOutput=append:$APP_DIR/server.log
-StandardError=append:$APP_DIR/server.log
+StandardOutput=append:$APP_INSTALL_DIR/server.log
+StandardError=append:$APP_INSTALL_DIR/server.log
 
 [Install]
 WantedBy=multi-user.target
 EOF
     print_success "systemd service file created at $SYSTEMD_FILE."
 
-    # 10. Start the Service
+    # 11. Start the Service
     print_status "Starting the application service..."
     systemctl daemon-reload
     systemctl enable --now ultimate-vps.service
 
-    # Give it a moment to start
     sleep 5
 
     if systemctl is-active --quiet ultimate-vps.service; then
@@ -179,13 +175,13 @@ EOF
         echo "       -d '{\"username\":\"admin\",\"password\":\"your-secure-password\"}' \\"
         echo "       http://localhost:3000/api/auth/register-admin"
         echo ""
-        echo "  Logs are stored at: $APP_DIR/server.log"
+        echo "  Logs are stored at: $APP_INSTALL_DIR/server.log"
         echo "================================================================="
     else
         print_error "The service failed to start. Check the logs for errors:"
         echo "  journalctl -u ultimate-vps.service"
         echo "  or"
-        echo "  tail -f $APP_DIR/server.log"
+        echo "  tail -f $APP_INSTALL_DIR/server.log"
     fi
 }
 
