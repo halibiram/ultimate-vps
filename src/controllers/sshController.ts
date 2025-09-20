@@ -150,22 +150,24 @@ export async function toggleSshAccount(request: FastifyRequest, reply: FastifyRe
 export async function deleteSshAccount(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
     const { username } = request.params as any;
     try {
-        // Step 1: Delete from the database first. If this fails, no harm is done to the OS.
-        await prisma.sSHAccount.delete({ where: { username }});
-
-        // Step 2: If database deletion is successful, delete the system user.
+        // Step 1: Delete the system user first to ensure we don't orphan a database record.
         const userDeleted = await sshService.deleteSSHUser(username);
         if (!userDeleted) {
-            // Log this critical issue, but the request is still successful from the client's perspective.
-            console.error(`CRITICAL: Failed to delete system user ${username}, but the database entry was removed.`);
+            // If the OS user deletion fails, abort the entire operation.
+            console.error(`Failed to delete system user ${username}. Aborting database operation.`);
+            return reply.code(500).send({ message: 'Failed to delete system user. Operation aborted.' });
         }
 
-        return reply.code(204).send(); // 204 No Content is standard for successful deletions.
+        // Step 2: If system user deletion is successful, delete the database record.
+        await prisma.sSHAccount.delete({ where: { username } });
+
+        return reply.code(204).send(); // Success
     } catch (error: any) {
         console.error(`Failed to delete SSH account ${username}:`, error);
+        // Handle the case where the account doesn't exist in the database to begin with.
         if (error.code === 'P2025') { // Prisma code for "record to delete does not exist"
             return reply.code(404).send({ message: 'Account not found.' });
         }
-        return reply.code(500).send({ message: 'Failed to delete SSH account.' });
+        return reply.code(500).send({ message: 'An unexpected error occurred during account deletion.' });
     }
 }
