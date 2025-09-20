@@ -42,6 +42,9 @@ export class StunnelService {
             // Step 1: Ensure sshd is not listening on the target port to avoid conflict.
             await this.updateSshdConfig(port, false);
 
+            // Step 1.5: Create the stunnel directory
+            await execAsync('sudo mkdir -p /etc/stunnel');
+
             // Step 2: Generate a self-signed certificate for Stunnel.
             await execAsync(
                 `sudo openssl req -x509 -nodes -days 3650 -newkey rsa:2048 ` +
@@ -50,8 +53,7 @@ export class StunnelService {
             );
 
             // Step 3: Create the Stunnel configuration file.
-            const config = `
-pid = /var/run/stunnel4/stunnel.pid
+            const config = `pid = /var/run/stunnel4/stunnel.pid
 output = /var/log/stunnel4/stunnel.log
 cert = /etc/stunnel/stunnel.pem
 client = no
@@ -59,12 +61,17 @@ client = no
 [ssh-ssl]
 accept = ${port}
 connect = 127.0.0.1:22
-            `.trim();
-            await execAsync(`echo '${config}' | sudo tee ${this.stunnelConfigPath}`);
+`;
+            const tempConfigPath = '/tmp/stunnel.conf';
+            await fs.writeFile(tempConfigPath, config.trim());
+            await execAsync(`sudo mv ${tempConfigPath} ${this.stunnelConfigPath}`);
 
 
             // Step 4: Ensure the Stunnel daemon is enabled.
-            await execAsync(`sudo sed -i 's/ENABLED=0/ENABLED=1/' ${this.stunnelDefaultFilePath}`);
+            const stunnelDefaultContent = 'ENABLED=1';
+            const tempStunnelDefaultPath = '/tmp/stunnel4';
+            await fs.writeFile(tempStunnelDefaultPath, stunnelDefaultContent);
+            await execAsync(`sudo mv ${tempStunnelDefaultPath} ${this.stunnelDefaultFilePath}`);
 
             // Step 5: Start or restart the Stunnel service.
             await execAsync('sudo systemctl restart stunnel4');
